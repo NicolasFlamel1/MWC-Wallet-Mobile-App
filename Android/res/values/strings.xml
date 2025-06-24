@@ -1,0 +1,17 @@
+<?php
+
+	// Included files
+	require_once "./mwcwallet.com-master/public_html/backend/common.php";
+	require_once "./mwcwallet.com-master/public_html/backend/language.php";
+	
+?><?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="ApplicationLabel"><?= escapeString(getTranslation('MWC Wallet')); ?></string>
+	<string name="FileChooserLabel"><?= escapeString(getTranslation('File Chooser')); ?></string>
+	<string name="FileSavedSuccessLabel"><?= escapeString(getTranslation('File saved')); ?></string>
+	<string name="FileSavedSuccessDescription"><?= escapeString(getTranslation('%%1$s was saved to your downloads.')); ?></string>
+	<string name="FileSavedFailLabel"><?= escapeString(getTranslation('File not saved')); ?></string>
+	<string name="FileSavedFailDescription"><?= escapeString(getTranslation('Saving the file failed.')); ?></string>
+	<string name="UsbDeviceChooserLabel"><?= escapeString(getTranslation('Select USB device')); ?></string>
+	<string name="BluetoothDeviceChooserLabel"><?= escapeString(getTranslation('Select Bluetooth device')); ?></string>
+</resources>

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.mwcwallet" versionCode="2.6.1" versionName="2.6.1">
+	<uses-sdk android:minSdkVersion="29"/>
+	<uses-permission android:name="android.permission.CAMERA"/>
+	<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+	<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+	<uses-permission android:name="android.permission.INTERNET"/>
+	<uses-feature android:name="android.software.webview" android:required="true"/>
+	<uses-feature android:name="android.hardware.camera.any" android:required="false"/>
+	<uses-feature android:name="android.hardware.usb.host" android:required="false"/>
+	<application android:debuggable="false" android:label="@string/ApplicationLabel" android:icon="@mipmap/app_icon" android:theme="@style/ApplicationTheme" android:usesCleartextTraffic="true">
+		<activity android:name=".MainActivity" android:launchMode="singleTask" android:configChanges="colorMode|density|fontScale|fontWeightAdjustment|grammaticalGender|keyboard|keyboardHidden|layoutDirection|locale|mcc|mnc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode">
+			<intent-filter>
+				<action android:name="android.intent.action.MAIN"/>
+				<category android:name="android.intent.category.LAUNCHER"/>
+			</intent-filter>
+			<intent-filter>
+				<action android:name="android.intent.action.VIEW"/>
+				<category android:name="android.intent.category.DEFAULT"/>
+				<category android:name="android.intent.category.BROWSABLE"/>
+				<data android:scheme="web+mwchttp"/>
+				<data android:scheme="web+mwchttps"/>
+				<data android:scheme="web+mwcfloonethttp"/>
+				<data android:scheme="web+mwcfloonethttps"/>
+				<data android:scheme="web+grinhttp"/>
+				<data android:scheme="web+grinhttps"/>
+				<data android:scheme="web+grintestnethttp"/>
+				<data android:scheme="web+grintestnethttps"/>
+				<data android:scheme="web+epichttp"/>
+				<data android:scheme="web+epichttps"/>
+				<data android:scheme="web+epicfloonethttp"/>
+				<data android:scheme="web+epicfloonethttps"/>
+			</intent-filter>
+			<intent-filter>
+				<action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"/>
+			</intent-filter>
+			<meta-data android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" android:resource="@xml/usb_device_filter"/>
+		</activity>
+	</application>
+</manifest>

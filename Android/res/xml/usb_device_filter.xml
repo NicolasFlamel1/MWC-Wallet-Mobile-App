@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+	<!-- Ledger -->
+	<usb-device vendor-id="2C97"/>
+	
+	<!-- Trezor -->
+	<usb-device vendor-id="1209" product-id="53C1"/>
+	
+</resources>
