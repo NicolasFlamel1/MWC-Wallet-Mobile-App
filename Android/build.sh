@@ -84,7 +84,7 @@ PATH="$JBR_BIN":$PATH "$BUILD_TOOLS/d8" --release --lib "$ANDROID_JAR" --output 
 if [[ ! -f "./keystore.jks" ]]; then
 	"$JBR_BIN/keytool" -genkeypair -keystore "./keystore.jks" -keyalg RSA -storepass android -dname CN= -validity 36500
 fi
-PATH="$JBR_BIN":$PATH "$BUILD_TOOLS/apksigner" sign --ks "./keystore.jks" --ks-pass pass:android --out "../MWC Wallet v$VERSION.apk" "./build/MWC Wallet_aligned.apk"
+PATH="$JBR_BIN":$PATH "$BUILD_TOOLS/apksigner" sign --ks "./keystore.jks" --ks-pass pass:android --out "../MWC Wallet Android App v$VERSION.apk" "./build/MWC Wallet_aligned.apk"
 
 # Cleanup
 rm -rf "./master.zip" "./mwcwallet.com-master" "./build"

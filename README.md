@@ -18,4 +18,4 @@ unzip "./master"
 cd "./MWC-Wallet-Mobile-App-master"
 cd "./Android" && BUILD_TOOLS=~/Android/Sdk/build-tools/36.0.0 ANDROID_JAR=~/Android/Sdk/platforms/android-35/android.jar JBR_BIN=~/android-studio/jbr/bin "./build.sh"
 ```
-This will create the Android app, `MWC-Wallet-Mobile-App-master/MWC Wallet.apk`.
+This will create the Android app, `MWC-Wallet-Mobile-App-master/MWC Wallet Android App.apk`.
