@@ -13,5 +13,4 @@
 	<string name="FileSavedFailLabel"><?= escapeString(getTranslation('File not saved')); ?></string>
 	<string name="FileSavedFailDescription"><?= escapeString(getTranslation('Saving the file failed.')); ?></string>
 	<string name="UsbDeviceChooserLabel"><?= escapeString(getTranslation('Select USB device')); ?></string>
-	<string name="BluetoothDeviceChooserLabel"><?= escapeString(getTranslation('Select Bluetooth device')); ?></string>
 </resources>

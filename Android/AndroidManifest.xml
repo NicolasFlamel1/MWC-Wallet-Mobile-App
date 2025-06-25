@@ -1,15 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.mwcwallet" versionCode="" versionName="">
-	<uses-sdk android:minSdkVersion="29"/>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.mwcwallet" android:versionCode="0" android:versionName="">
+	<uses-sdk android:minSdkVersion="29" android:targetSdkVersion="35"/>
 	<uses-permission android:name="android.permission.CAMERA"/>
-	<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
 	<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 	<uses-permission android:name="android.permission.INTERNET"/>
 	<uses-feature android:name="android.software.webview" android:required="true"/>
 	<uses-feature android:name="android.hardware.camera.any" android:required="false"/>
 	<uses-feature android:name="android.hardware.usb.host" android:required="false"/>
 	<application android:debuggable="false" android:label="@string/ApplicationLabel" android:icon="@mipmap/app_icon" android:theme="@style/ApplicationTheme" android:usesCleartextTraffic="true">
-		<activity android:name=".MainActivity" android:launchMode="singleTask" android:configChanges="colorMode|density|fontScale|fontWeightAdjustment|grammaticalGender|keyboard|keyboardHidden|layoutDirection|locale|mcc|mnc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode">
+		<activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:configChanges="colorMode|density|fontScale|fontWeightAdjustment|grammaticalGender|keyboard|keyboardHidden|layoutDirection|locale|mcc|mnc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode">
 			<intent-filter>
 				<action android:name="android.intent.action.MAIN"/>
 				<category android:name="android.intent.category.LAUNCHER"/>

@@ -4,6 +4,6 @@
 		<item name="android:statusBarColor">#FFF</item>
 		<item name="android:windowLightStatusBar">true</item>
 		<item name="android:windowSplashScreenBackground">#7A00D9</item>
-		<item name="android:windowSplashScreenAnimatedIcon">@mipmap/logo</item>
+		<item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_screen</item>
 	</style>
 </resources>

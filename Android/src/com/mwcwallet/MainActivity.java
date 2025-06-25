@@ -11,6 +11,8 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
+import android.content.ContentValues;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -19,6 +21,7 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
 import android.content.res.XmlResourceParser;
+import android.database.Cursor;
 import android.hardware.usb.UsbConfiguration;
 import android.hardware.usb.UsbConstants;
 import android.hardware.usb.UsbDevice;
@@ -30,10 +33,10 @@ import android.Manifest;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
+import android.provider.MediaStore;
 import android.util.Pair;
 import android.util.Log;
 import android.view.View;
@@ -50,8 +53,6 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.ArrayAdapter;
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.StringBuilder;
@@ -75,7 +76,7 @@ public final class MainActivity extends Activity {
 	private class UsbDeviceArrayListItem extends Object {
 	
 		// Constructor
-		private UsbDeviceArrayListItem(final UsbDevice usbDevice) {
+		public UsbDeviceArrayListItem(final UsbDevice usbDevice) {
 		
 			// Set USB device to USB device
 			this.usbDevice = usbDevice;
@@ -89,7 +90,7 @@ public final class MainActivity extends Activity {
 		}
 		
 		// Get USB device
-		private UsbDevice getUsbDevice() {
+		public UsbDevice getUsbDevice() {
 		
 			// Return USB device
 			return usbDevice;
@@ -116,21 +117,24 @@ public final class MainActivity extends Activity {
 		}
 		
 		// Set current values to nothing
-		currentSaveFileName = null;
-		currentSaveFileContents = null;
 		currentPermissionRequest = null;
 		currentFileChooserCallback = null;
 		currentNotification = null;
 		currentRequestUsbDeviceId = null;
 		
+		// Create notification channel
+		final NotificationChannel notificationChannel = new NotificationChannel(getPackageName(), getString(R.string.ApplicationLabel), NotificationManager.IMPORTANCE_MAX);
+		notificationChannel.setShowBadge(false);
+		
 		// Register notification channel
 		notificationIndex = 0;
-		((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(new NotificationChannel(getPackageName(), getString(R.string.ApplicationLabel), NotificationManager.IMPORTANCE_MAX));
+		((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(notificationChannel);
 		
 		// Create web view
 		webView = new WebView(this);
 		
 		// Check if device supports being a USB host
+		final MainActivity self = this;
 		final boolean deviceSupportsUsbHost = getPackageManager().hasSystemFeature(PackageManager.FEATURE_USB_HOST);
 		if(deviceSupportsUsbHost) {
 		
@@ -154,7 +158,7 @@ public final class MainActivity extends Activity {
 							case ACTION_USB_DEVICE_PERMISSION:
 							
 								// Check if current request USB device ID exists
-								if(currentRequestUsbDeviceId != null) {
+								if(self.currentRequestUsbDeviceId != null) {
 								
 									// Check if permission was granted
 									if(intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
@@ -177,17 +181,17 @@ public final class MainActivity extends Activity {
 										}
 										
 										// Check if USB device exists and is allowed
-										if(usbDevice != null && isUsbDeviceAllowed(usbDevice)) {
+										if(usbDevice != null && self.isUsbDeviceAllowed(usbDevice)) {
 										
 											// Send request USB device response message to web view
-											webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(currentRequestUsbDeviceId) + ", \"Data\": {\"ID\": " + JSONObject.quote(Integer.toString(usbDevice.getDeviceId())) + ", \"Manufacturer Name\": " + JSONObject.quote(usbDevice.getManufacturerName()) + ", \"Product Name\": " + JSONObject.quote(usbDevice.getProductName()) + ", \"Vendor ID\": " + usbDevice.getVendorId() + ", \"Product ID\": " + usbDevice.getProductId() + "}}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+											self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(self.currentRequestUsbDeviceId) + ", \"Data\": {\"ID\": " + JSONObject.quote(Integer.toString(usbDevice.getDeviceId())) + ", \"Manufacturer Name\": " + JSONObject.quote(usbDevice.getManufacturerName()) + ", \"Product Name\": " + JSONObject.quote(usbDevice.getProductName()) + ", \"Vendor ID\": " + usbDevice.getVendorId() + ", \"Product ID\": " + usbDevice.getProductId() + "}}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 										}
 										
 										// Otherwise
 										else {
 										
 											// Send request USB device response message to web view
-											webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(currentRequestUsbDeviceId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+											self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(self.currentRequestUsbDeviceId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 										}
 									}
 									
@@ -195,11 +199,11 @@ public final class MainActivity extends Activity {
 									else {
 									
 										// Send request USB device response message to web view
-										webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(currentRequestUsbDeviceId) + ", \"Error\": \"Permission denied\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(self.currentRequestUsbDeviceId) + ", \"Error\": \"Permission denied\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 									}
 									
 									// Set current request USB device ID to nothing
-									currentRequestUsbDeviceId = null;
+									self.currentRequestUsbDeviceId = null;
 								}
 								
 								// Break
@@ -226,10 +230,10 @@ public final class MainActivity extends Activity {
 								}
 								
 								// Check if USB device exists and is allowed
-								if(usbDevice != null && isUsbDeviceAllowed(usbDevice)) {
+								if(usbDevice != null && self.isUsbDeviceAllowed(usbDevice)) {
 								
 									// Send USB device disconnect event message to web view
-									webView.postWebMessage(new WebMessage("{\"Event\": \"USB Device Disconnected\", \"Data\": " + JSONObject.quote(Integer.toString(usbDevice.getDeviceId())) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+									self.webView.postWebMessage(new WebMessage("{\"Event\": \"USB Device Disconnected\", \"Data\": " + JSONObject.quote(Integer.toString(usbDevice.getDeviceId())) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 								}
 								
 								// Break
@@ -238,7 +242,7 @@ public final class MainActivity extends Activity {
 					}
 				}
 				
-			}, intentFilter);
+			}, intentFilter, RECEIVER_NOT_EXPORTED);
 		}
 		
 		// Configure web view
@@ -259,7 +263,6 @@ public final class MainActivity extends Activity {
 		
 		// Add mobile app JavaScript interface
 		final Map<String, byte[]> postData = new HashMap<String, byte[]>();
-		final MainActivity self = this;
 		final boolean deviceSupportsCameras = getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY);
 		final Map<String, Pair<UsbDevice, UsbDeviceConnection>> openedUsbDevices = new HashMap<String, Pair<UsbDevice, UsbDeviceConnection>>();
 		webView.addJavascriptInterface(new Object() {
@@ -295,12 +298,73 @@ public final class MainActivity extends Activity {
 					// Run on the UI thread
 					runOnUiThread(() -> {
 					
-						// Set current save file name and contents
-						currentSaveFileName = name;
-						currentSaveFileContents = contents;
+						// Create content values for file
+						final ContentValues contentValues = new ContentValues();
+						contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+						contentValues.put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream");
 						
-						// Request write file permission
-						requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_FILE_WRITE_PERMISSION);
+						// Check if creating file was successful
+						final ContentResolver contentResolver = getContentResolver();
+						final Uri uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues);
+						if(uri != null) {
+						
+							// Try
+							try {
+							
+								// Check if getting cursor for file's name was successful
+								final Cursor cursor = contentResolver.query(uri, new String[] {MediaStore.MediaColumns.DISPLAY_NAME}, null, null, null);
+								String fileName = name;
+								if(cursor != null) {
+								
+									// Try
+									try {
+									
+										// Check if moving cursor was successful
+										if(cursor.moveToFirst()) {
+										
+											// Set file name to file's name
+											fileName = cursor.getString(0);
+										}
+									}
+									
+									// Finally
+									finally {
+									
+										// Close cursor
+										cursor.close();
+									}
+								}
+							
+								// Check if getting file's output stream was successful
+								final OutputStream outputStream = contentResolver.openOutputStream(uri);
+								if(outputStream != null) {
+								
+									// Write contents to file
+									outputStream.write(contents);
+									outputStream.close();
+								}
+								
+								// Set current notification to show that saving the file was successful
+								currentNotification = new Notification.Builder(self, getPackageName()).setSmallIcon(R.drawable.logo).setContentTitle(getString(R.string.FileSavedSuccessLabel)).setContentText(String.format(getString(R.string.FileSavedSuccessDescription), fileName)).setContentIntent(PendingIntent.getActivity(self, 0, new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS), PendingIntent.FLAG_IMMUTABLE)).setAutoCancel(true).build();
+								
+								// Request post notifications permission
+								requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_POST_NOTIFICATIONS_PERMISSION);
+								
+								// Return
+								return;
+							}
+							
+							// Catch errors
+							catch(final Exception exception) {
+							
+							}
+						}
+						
+						// Set current notification to show that saving the file failed
+						currentNotification = new Notification.Builder(self, getPackageName()).setSmallIcon(R.drawable.logo).setContentTitle(getString(R.string.FileSavedFailLabel)).setContentText(getString(R.string.FileSavedFailDescription)).build();
+						
+						// Request post notifications permission
+						requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_POST_NOTIFICATIONS_PERMISSION);
 					});
 				}
 			}
@@ -339,7 +403,7 @@ public final class MainActivity extends Activity {
 								for(final UsbDevice usbDevice : ((UsbManager)getSystemService(USB_SERVICE)).getDeviceList().values()) {
 								
 									// Check if USB device exists and is allowed
-									if(usbDevice != null && isUsbDeviceAllowed(usbDevice)) {
+									if(usbDevice != null && self.isUsbDeviceAllowed(usbDevice)) {
 									
 										// Add USB device to list
 										usbDevices.put(new JSONObject() {{
@@ -354,7 +418,7 @@ public final class MainActivity extends Activity {
 								}
 							
 								// Send get USB devices response message to web view
-								webView.postWebMessage(new WebMessage((new JSONObject() {{
+								self.webView.postWebMessage(new WebMessage((new JSONObject() {{
 								
 									// Get USB devices response
 									put("USB Request ID", requestId);
@@ -367,7 +431,7 @@ public final class MainActivity extends Activity {
 							catch(final Exception exception) {
 							
 								// Send USB devices response message to web view
-								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 						}
 						
@@ -375,7 +439,7 @@ public final class MainActivity extends Activity {
 						else {
 						
 							// Send USB devices response message to web view
-							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					});
 				}
@@ -401,7 +465,7 @@ public final class MainActivity extends Activity {
 							for(final UsbDevice usbDevice : usbManager.getDeviceList().values()) {
 							
 								// Check if USB device exists and is allowed
-								if(usbDevice != null && isUsbDeviceAllowed(usbDevice)) {
+								if(usbDevice != null && self.isUsbDeviceAllowed(usbDevice)) {
 								
 									// Add USB device to list
 									usbDevices.add(new UsbDeviceArrayListItem(usbDevice));
@@ -412,7 +476,7 @@ public final class MainActivity extends Activity {
 							if(usbDevices.isEmpty()) {
 							
 								// Send request USB device response message to web view
-								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No device found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No device found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 							
 							// Otherwise
@@ -429,7 +493,7 @@ public final class MainActivity extends Activity {
 									@Override public void onCancel(final DialogInterface dialog) {
 									
 										// Send request USB device response message to web view
-										webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No device selected\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No device selected\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 									}
 								});
 								
@@ -441,7 +505,7 @@ public final class MainActivity extends Activity {
 									@Override public final void onClick(final DialogInterface dialog, final int which) {
 									
 										// Set current request USB device ID to the request ID
-										currentRequestUsbDeviceId = requestId;
+										self.currentRequestUsbDeviceId = requestId;
 									
 										// Request permission to access the USB device
 										usbManager.requestPermission(arrayAdapter.getItem(which).getUsbDevice(), PendingIntent.getBroadcast(self, 0, new Intent(ACTION_USB_DEVICE_PERMISSION).setPackage(getPackageName()), PendingIntent.FLAG_MUTABLE));
@@ -457,7 +521,7 @@ public final class MainActivity extends Activity {
 						else {
 						
 							// Send request USB device response message to web view
-							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					});
 				}
@@ -483,7 +547,7 @@ public final class MainActivity extends Activity {
 								if(usbDevice != null && Integer.toString(usbDevice.getDeviceId()).equals(deviceId)) {
 								
 									// Check if app has permission to access the USB device and the USB device isn't already open and is allowed
-									if(usbManager.hasPermission(usbDevice) && !openedUsbDevices.containsKey(deviceId) && isUsbDeviceAllowed(usbDevice)) {
+									if(usbManager.hasPermission(usbDevice) && !openedUsbDevices.containsKey(deviceId) && self.isUsbDeviceAllowed(usbDevice)) {
 									
 										// Check if opening the USB device was successful
 										final UsbDeviceConnection usbDeviceConnection = usbManager.openDevice(usbDevice);
@@ -493,7 +557,7 @@ public final class MainActivity extends Activity {
 											openedUsbDevices.put(deviceId, new Pair<>(usbDevice, usbDeviceConnection));
 											
 											// Send open USB device response message to web view
-											webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+											self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 											
 											// Return
 											return;
@@ -504,7 +568,7 @@ public final class MainActivity extends Activity {
 									else if(!usbManager.hasPermission(usbDevice)) {
 									
 										// Send open USB device response message to web view
-										webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Permission required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Permission required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 										
 										// Return
 										return;
@@ -514,7 +578,7 @@ public final class MainActivity extends Activity {
 									else if(openedUsbDevices.containsKey(deviceId)) {
 									
 										// Send open USB device response message to web view
-										webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device already open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device already open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 										
 										// Return
 										return;
@@ -526,14 +590,14 @@ public final class MainActivity extends Activity {
 							}
 							
 							// Send open USB device response message to web view
-							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 						
 						// Otherwise
 						else {
 						
 							// Send open USB device response message to web view
-							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					});
 				}
@@ -568,14 +632,14 @@ public final class MainActivity extends Activity {
 								openedUsbDevices.remove(deviceId);
 								
 								// Send close USB device response message to web view
-								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 							
 							// Otherwise
 							else {
 							
 								// Send close USB device response message to web view
-								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 						}
 						
@@ -583,7 +647,7 @@ public final class MainActivity extends Activity {
 						else {
 						
 							// Send close USB device response message to web view
-							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					});
 				}
@@ -628,7 +692,7 @@ public final class MainActivity extends Activity {
 										try {
 										
 											// Send select USB device configuration response message to web view
-											webView.postWebMessage(new WebMessage((new JSONObject() {{
+											self.webView.postWebMessage(new WebMessage((new JSONObject() {{
 											
 												// Select USB device configuration response
 												put("USB Request ID", requestId);
@@ -641,7 +705,7 @@ public final class MainActivity extends Activity {
 										catch(final Exception exception) {
 										
 											// Send select USB device configuration response message to web view
-											webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+											self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 										}
 										
 										// Return
@@ -650,14 +714,14 @@ public final class MainActivity extends Activity {
 								}
 								
 								// Send select USB device configuration response message to web view
-								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 							
 							// Otherwise
 							else {
 							
 								// Send select USB device configuration response message to web view
-								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 						}
 						
@@ -665,7 +729,7 @@ public final class MainActivity extends Activity {
 						else {
 						
 							// Send select USB device configuration response message to web view
-							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					});
 				}
@@ -717,14 +781,14 @@ public final class MainActivity extends Activity {
 											if(result) {
 											
 												// Send claim USB device interface response message to web view
-												webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+												self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 											}
 											
 											// Otherwise
 											else {
 											
 												// Send claim USB device interface response message to web view
-												webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+												self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 											}
 										}
 										
@@ -732,7 +796,7 @@ public final class MainActivity extends Activity {
 										else {
 										
 											// Send claim USB device interface response message to web view
-											webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No interface found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+											self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No interface found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 										}
 										
 										// Return
@@ -741,14 +805,14 @@ public final class MainActivity extends Activity {
 								}
 								
 								// Send claim USB device interface response message to web view
-								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 							
 							// Otherwise
 							else {
 							
 								// Send claim USB device interface response message to web view
-								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 						}
 						
@@ -756,7 +820,7 @@ public final class MainActivity extends Activity {
 						else {
 						
 							// Send claim USB device interface response message to web view
-							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					});
 				}
@@ -808,14 +872,14 @@ public final class MainActivity extends Activity {
 											if(result) {
 											
 												// Send release USB device interface response message to web view
-												webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+												self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 											}
 											
 											// Otherwise
 											else {
 											
 												// Send release USB device interface response message to web view
-												webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+												self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 											}
 										}
 										
@@ -823,7 +887,7 @@ public final class MainActivity extends Activity {
 										else {
 										
 											// Send release USB device interface response message to web view
-											webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No interface found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+											self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No interface found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 										}
 										
 										// Return
@@ -832,14 +896,14 @@ public final class MainActivity extends Activity {
 								}
 								
 								// Send release USB device interface response message to web view
-								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 							
 							// Otherwise
 							else {
 							
 								// Send release USB device interface response message to web view
-								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 						}
 						
@@ -847,7 +911,7 @@ public final class MainActivity extends Activity {
 						else {
 						
 							// Send release USB device interface response message to web view
-							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					});
 				}
@@ -914,7 +978,7 @@ public final class MainActivity extends Activity {
 															runOnUiThread(() -> {
 															
 																// Send transfer USB device out response message to web view
-																webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 															});
 														}
 														
@@ -925,7 +989,7 @@ public final class MainActivity extends Activity {
 															runOnUiThread(() -> {
 															
 																// Send transfer USB device out response message to web view
-																webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 															});
 														}
 														
@@ -938,7 +1002,7 @@ public final class MainActivity extends Activity {
 										}
 										
 										// Send transfer USB device out response message to web view
-										webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No endpoint found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No endpoint found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 										
 										// Return
 										return;
@@ -946,14 +1010,14 @@ public final class MainActivity extends Activity {
 								}
 								
 								// Send transfer USB device out response message to web view
-								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 							
 							// Otherwise
 							else {
 							
 								// Send transfer USB device out response message to web view
-								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 						}
 						
@@ -961,7 +1025,7 @@ public final class MainActivity extends Activity {
 						else {
 						
 							// Send transfer USB device out response message to web view
-							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					});
 				}
@@ -1029,7 +1093,7 @@ public final class MainActivity extends Activity {
 															runOnUiThread(() -> {
 														
 																// Send transfer USB device in response message to web view
-																webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Data\": " + JSONObject.quote(toHexString(data)) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Data\": " + JSONObject.quote(MainActivity.toHexString(data)) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 															});
 														}
 														
@@ -1040,7 +1104,7 @@ public final class MainActivity extends Activity {
 															runOnUiThread(() -> {
 															
 																// Send transfer USB device in response message to web view
-																webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 															});
 														}
 														
@@ -1053,7 +1117,7 @@ public final class MainActivity extends Activity {
 										}
 										
 										// Send transfer USB device in response message to web view
-										webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No endpoint found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No endpoint found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 										
 										// Return
 										return;
@@ -1061,14 +1125,14 @@ public final class MainActivity extends Activity {
 								}
 								
 								// Send transfer USB device in response message to web view
-								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 							
 							// Otherwise
 							else {
 							
 								// Send transfer USB device in response message to web view
-								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 						}
 						
@@ -1076,7 +1140,7 @@ public final class MainActivity extends Activity {
 						else {
 						
 							// Send transfer USB device in response message to web view
-							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					});
 				}
@@ -1125,7 +1189,7 @@ public final class MainActivity extends Activity {
 									}
 									
 									// Return requested asset
-									return new WebResourceResponse(getMineType(path), getEncoding(path), inputStream);
+									return new WebResourceResponse(MainActivity.getMineType(path), MainActivity.getEncoding(path), inputStream);
 								}
 							}
 							
@@ -1189,8 +1253,8 @@ public final class MainActivity extends Activity {
 									// Configure connection
 									connection.setRequestProperty("Connection", "close");
 									connection.setUseCaches(false);
-									connection.setConnectTimeout(CONNECT_TIMEOUT_MILLISECONDS);
-									connection.setReadTimeout(READ_TIMEOUT_MILLISECONDS);
+									connection.setConnectTimeout(MainActivity.CONNECT_TIMEOUT_MILLISECONDS);
+									connection.setReadTimeout(MainActivity.READ_TIMEOUT_MILLISECONDS);
 									
 									// Check if request is a POST request
 									if(request.getMethod().equals("POST")) {
@@ -1302,7 +1366,7 @@ public final class MainActivity extends Activity {
 							if(deviceSupportsCameras) {
 							
 								// Set current permission request
-								currentPermissionRequest = request;
+								self.currentPermissionRequest = request;
 								
 								// Request camera permission
 								requestPermissions(new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA_PERMISSION);
@@ -1325,7 +1389,7 @@ public final class MainActivity extends Activity {
 				if(filePathCallback != null) {
 				
 					// Set current file chooser callback
-					currentFileChooserCallback = filePathCallback;
+					self.currentFileChooserCallback = filePathCallback;
 					
 					// Show file chooser
 					final Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
@@ -1484,7 +1548,7 @@ public final class MainActivity extends Activity {
 			@Override public final boolean onPreDraw() {
 			
 				// Check if done loading
-				if(doneLoading) {
+				if(self.doneLoading) {
 				
 					// Remove pre-draw listener
 					content.getViewTreeObserver().removeOnPreDrawListener(this);
@@ -1494,7 +1558,7 @@ public final class MainActivity extends Activity {
 				}
 				
 				// Return if done loading
-				return doneLoading;
+				return self.doneLoading;
 			}
 		});
 	}
@@ -1686,45 +1750,6 @@ public final class MainActivity extends Activity {
 				// Break
 				break;
 				
-			// Request file write permission
-			case REQUEST_FILE_WRITE_PERMISSION:
-			
-				// Check if current save file name and contents exist
-				if(currentSaveFileName != null && currentSaveFileContents != null) {
-				
-					// Try
-					try {
-					
-						// Create current save file
-						final File file = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), currentSaveFileName);
-						
-						// Write current save file contents to file
-						final FileOutputStream fileOutputStream = new FileOutputStream(file);
-						fileOutputStream.write(currentSaveFileContents);
-						fileOutputStream.close();
-						
-						// Set current notification to show that saving the file was successful
-						currentNotification = new Notification.Builder(this, getPackageName()).setSmallIcon(R.mipmap.app_icon).setContentTitle(getString(R.string.FileSavedSuccessLabel)).setContentText(String.format(getString(R.string.FileSavedSuccessDescription), currentSaveFileName)).setContentIntent(PendingIntent.getActivity(this, 0, new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS), PendingIntent.FLAG_IMMUTABLE)).setAutoCancel(true).build();
-					}
-					
-					// Catch errors
-					catch(final Exception exception) {
-					
-						// Set current notification to show that saving the file failed
-						currentNotification = new Notification.Builder(this, getPackageName()).setSmallIcon(R.mipmap.app_icon).setContentTitle(getString(R.string.FileSavedFailLabel)).setContentText(getString(R.string.FileSavedFailDescription)).build();
-					}
-					
-					// Set current save file name and contents to nothing
-					currentSaveFileName = null;
-					currentSaveFileContents = null;
-					
-					// Request post notifications permission
-					requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_POST_NOTIFICATIONS_PERMISSION);
-				}
-				
-				// Break
-				break;
-				
 			// Request post notifications permission
 			case REQUEST_POST_NOTIFICATIONS_PERMISSION:
 			
@@ -1818,7 +1843,7 @@ public final class MainActivity extends Activity {
 	}
 	
 	// Is USB device allowed
-	private boolean isUsbDeviceAllowed(final UsbDevice usbDevice) {
+	public boolean isUsbDeviceAllowed(final UsbDevice usbDevice) {
 	
 		// Get USB device filter from resources
 		final XmlResourceParser usbDeviceFilter = getResources().getXml(R.xml.usb_device_filter);
@@ -1897,7 +1922,7 @@ public final class MainActivity extends Activity {
 	}
 	
 	// Get mime type
-	static private String getMineType(final String file) {
+	static public String getMineType(final String file) {
 	
 		// Check file's extension
 		final int startOfExtension = file.lastIndexOf(".");
@@ -1986,7 +2011,7 @@ public final class MainActivity extends Activity {
 	}
 	
 	// Get encoding
-	static private String getEncoding(final String file) {
+	static public String getEncoding(final String file) {
 	
 		final int startOfExtension = file.lastIndexOf(".");
 		switch((startOfExtension == -1) ? "" : file.substring(startOfExtension + ".".length())) {
@@ -2010,7 +2035,7 @@ public final class MainActivity extends Activity {
 	}
 	
 	// To hex string
-	static private String toHexString(final byte[] bytes) {
+	static public String toHexString(final byte[] bytes) {
 	
 		// Create hex string
 		final StringBuilder hexString = new StringBuilder(bytes.length * 2);
@@ -2039,25 +2064,22 @@ public final class MainActivity extends Activity {
 	static private final String ASSET_URI_AUTHORITY = "mwcwallet.com";
 	
 	// Connect timeout milliseconds
-	static private int CONNECT_TIMEOUT_MILLISECONDS = 30 * 1000;
+	static public int CONNECT_TIMEOUT_MILLISECONDS = 30 * 1000;
 	
 	// Read timeout milliseconds
-	static private int READ_TIMEOUT_MILLISECONDS = 5 * 60 * 1000;
+	static public int READ_TIMEOUT_MILLISECONDS = 5 * 60 * 1000;
 	
 	// Request camera permission
 	static private final int REQUEST_CAMERA_PERMISSION = 1;
 	
-	// Request file write permission
-	static private final int REQUEST_FILE_WRITE_PERMISSION = 2;
-	
 	// Request ost notifications permission
-	static private final int REQUEST_POST_NOTIFICATIONS_PERMISSION = 3;
+	static private final int REQUEST_POST_NOTIFICATIONS_PERMISSION = 2;
 	
 	// Request internet permission
-	static private final int REQUEST_INTERNET_PERMISSION = 4;
+	static private final int REQUEST_INTERNET_PERMISSION = 3;
 	
 	// Request Bluetooth connect permission
-	static private final int REQUEST_BLUETOOTH_CONNECT_PERMISSION = 5;
+	static private final int REQUEST_BLUETOOTH_CONNECT_PERMISSION = 4;
 	
 	// Request file selection
 	static private final int REQUEST_FILE_SELECTION = 1;
@@ -2066,26 +2088,20 @@ public final class MainActivity extends Activity {
 	private int notificationIndex;
 	
 	// Web view
-	private WebView webView;
+	public WebView webView;
 	
 	// Done loading
-	private boolean doneLoading;
-	
-	// Current save file name
-	private String currentSaveFileName;
-	
-	// Current save file contents
-	private byte[] currentSaveFileContents;
+	public boolean doneLoading;
 	
 	// Current permission request
-	private PermissionRequest currentPermissionRequest;
+	public PermissionRequest currentPermissionRequest;
 	
 	// Current file chooser callback
-	private ValueCallback<Uri[]> currentFileChooserCallback;
+	public ValueCallback<Uri[]> currentFileChooserCallback;
 	
 	// Current notification
-	private Notification currentNotification;
+	public Notification currentNotification;
 	
 	// Current request USB device ID
-	private String currentRequestUsbDeviceId;
+	public String currentRequestUsbDeviceId;
 }

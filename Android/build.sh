@@ -71,13 +71,20 @@ SERVER_NAME="mwcwallet.com" HTTPS="on" NO_FILE_VERSIONS="" NO_FILE_CHECKSUMS="" 
 SERVER_NAME="mwcwallet.com" HTTPS="on" NO_FILE_VERSIONS="" NO_FILE_CHECKSUMS="" NO_MINIFIED_FILES="" HTTPS_SERVER_ADDRESS="https://mwcwallet.com" TOR_SERVER_ADDRESS="http://mwcwalletmiq3gdkmfbqlytxunvlxyli4m6zrqozk7xjc353ewqb6bad.onion" php "./mwcwallet.com-master/public_html/scripts/languages.js" > "./build/assets/scripts/languages.js"
 
 # Prepare app
-sed -i "s/versionCode=\".*\" versionName=\".*\"/versionCode=\"$VERSION\" versionName=\"$VERSION\"/" "./AndroidManifest.xml"
+sed -i "s/android:versionCode=\".*\" android:versionName=\".*\"/android:versionCode=\"$(($(grep -Po "(?<=android:versionCode=\").*?(?=\")" "./AndroidManifest.xml") + 1))\" android:versionName=\"$VERSION\"/" "./AndroidManifest.xml"
 
 # Build app
 "$BUILD_TOOLS/aapt" package -m -J "./build/gen" -M "./AndroidManifest.xml" -I "$ANDROID_JAR" -S "./build/res"
-"$JBR_BIN/javac" -classpath "$ANDROID_JAR" -d "./build/obj" $(find "./build/gen/" -name "*.java") "./MainActivity.java"
-PATH="$JBR_BIN":$PATH "$BUILD_TOOLS/d8" --release --lib "$ANDROID_JAR" --output "./build/apk" $(find "./build/obj/" -name "*.class")
+"$JBR_BIN/javac" -classpath "$ANDROID_JAR" -d "./build/obj" $(find "./build/gen/" -name "*.java") "./src/com/mwcwallet/MainActivity.java"
+PATH="$JBR_BIN":$PATH "$BUILD_TOOLS/d8" --min-api $(grep -Po "(?<=minSdkVersion=\").*?(?=\")" "./AndroidManifest.xml") --release --lib "$ANDROID_JAR" --output "./build/apk" $(find "./build/obj/" -name "*.class")
 "$BUILD_TOOLS/aapt" package -M "./AndroidManifest.xml" -I "$ANDROID_JAR" -S "./build/res" -A "./build/assets" -F "./build/MWC Wallet_unsigned.apk" "./build/apk"
+
+# Check if lint is provided
+if [[ -v LINT ]]; then
+
+	# Lint project
+	PATH="$JBR_BIN":$PATH "$LINT" -Wall --ignore HardcodedDebugMode --ignore UnknownNullness --ignore SetJavaScriptEnabled --sources "./src" --sources "./build/gen" --resources "./build/res" --classpath "./build/obj" --libraries "$ANDROID_JAR" "./"
+fi
 
 # Sign app
 "$BUILD_TOOLS/zipalign" -p 4 "./build/MWC Wallet_unsigned.apk" "./build/MWC Wallet_aligned.apk"
@@ -88,3 +95,13 @@ PATH="$JBR_BIN":$PATH "$BUILD_TOOLS/apksigner" sign --ks "./keystore.jks" --ks-p
 
 # Cleanup
 rm -rf "./master.zip" "./mwcwallet.com-master" "./build"
+
+# Check if adb is provided
+if [[ -v ADB ]]; then
+
+	# Install and run app
+	"$ADB" install "../MWC Wallet Android App v$VERSION.apk"
+	"$ADB" shell am start -n "com.mwcwallet/.MainActivity"
+	"$ADB" logcat -c
+	"$ADB" logcat -s "com.mwcwallet"
+fi
