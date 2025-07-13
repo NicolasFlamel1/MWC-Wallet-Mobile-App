@@ -1642,6 +1642,9 @@ if(typeof MobileApp !== "undefined") {
 				// Constructor
 				constructor() {
 				
+					// Set is mobile app implementation to true
+					this.isMobileAppImplementation = true;
+					
 					// Initialize Bluetooth devices
 					this.bluetoothDevices = {};
 					

@@ -1818,35 +1818,39 @@ public final class MainActivity extends Activity {
 					// Run on the UI thread
 					runOnUiThread(() -> {
 					
-						// Check if Bluetooth device is open
-						if(openedBluetoothDevices.containsKey(deviceId)) {
+						// Check if device supports Bluetooth
+						if(deviceSupportsBluetooth) {
 						
-							// Check if Bluetooth device has a pending request
-							final String currentRequestId = openedBluetoothDevices.get(deviceId).first;
-							if(currentRequestId != null) {
+							// Check if Bluetooth device is open
+							if(openedBluetoothDevices.containsKey(deviceId)) {
 							
-								// Send response message to web view
-								webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(currentRequestId) + ", \"Error\": \"Connection error\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
-							}
-							
-							// Get Bluetooth GATT
-							final BluetoothGatt bluetoothGatt = openedBluetoothDevices.get(deviceId).second;
-							
-							// Check if Bluetooth GATT is connected
-							if(bluetoothGatt != null) {
-							
-								// Disconnect Bluetooth GATT
-								bluetoothGatt.disconnect();
+								// Check if Bluetooth device has a pending request
+								final String currentRequestId = openedBluetoothDevices.get(deviceId).first;
+								if(currentRequestId != null) {
 								
-								// Close Bluetooth GATT
-								bluetoothGatt.close();
+									// Send response message to web view
+									webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(currentRequestId) + ", \"Error\": \"Connection error\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								}
+								
+								// Get Bluetooth GATT
+								final BluetoothGatt bluetoothGatt = openedBluetoothDevices.get(deviceId).second;
+								
+								// Check if Bluetooth GATT is connected
+								if(bluetoothGatt != null) {
+								
+									// Disconnect Bluetooth GATT
+									bluetoothGatt.disconnect();
+									
+									// Close Bluetooth GATT
+									bluetoothGatt.close();
+								}
+								
+								// Remove opened Bluetooth device from list
+								openedBluetoothDevices.remove(deviceId);
+								
+								// Send Bluetooth device disconnect event message to web view
+								webView.postWebMessage(new WebMessage("{\"Event\": \"Bluetooth Device Disconnected\", \"Data\": " + JSONObject.quote(deviceId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
-							
-							// Remove opened Bluetooth device from list
-							openedBluetoothDevices.remove(deviceId);
-							
-							// Send Bluetooth device disconnect event message to web view
-							webView.postWebMessage(new WebMessage("{\"Event\": \"Bluetooth Device Disconnected\", \"Data\": " + JSONObject.quote(deviceId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					});
 				}
