@@ -5,6 +5,8 @@
 		<item name="android:windowLightStatusBar">true</item>
 		<item name="android:navigationBarColor">#FFF</item>
 		<item name="android:windowLightNavigationBar">true</item>
-		<item name="android:windowBackground">@drawable/splash_screen</item>
+		<item name="android:windowBackground">#7A00D9</item>
+		<item name="android:windowSplashScreenBackground">#7A00D9</item>
+		<item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_screen_icon</item>
 	</style>
 </resources>

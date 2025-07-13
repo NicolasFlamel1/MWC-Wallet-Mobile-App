@@ -5,7 +5,7 @@ wget "https://github.com/NicolasFlamel1/mwcwallet.com/archive/refs/heads/master.
 unzip "./master"
 cp -r "./mwcwallet.com-master/public_html/." "./build/assets/"
 chmod 777 -R "./build/"
-cp -r "./res" "./build"
+cp -r "./res" "./build/"
 
 # Create locales
 php "./res/values/strings.xml" > "./build/res/values/strings.xml"
@@ -82,7 +82,7 @@ PATH="$JBR_BIN":$PATH "$BUILD_TOOLS/d8" --min-api $(grep -Po "(?<=minSdkVersion=
 # Check if lint is provided
 if [[ -v LINT ]]; then
 
-	# Lint project
+	# Lint app
 	PATH="$JBR_BIN":$PATH "$LINT" -Wall --ignore HardcodedDebugMode --ignore UnknownNullness --ignore SetJavaScriptEnabled --sources "./src" --sources "./build/gen" --resources "./build/res" --classpath "./build/obj" --libraries "$ANDROID_JAR" "./"
 fi
 
@@ -94,7 +94,8 @@ fi
 PATH="$JBR_BIN":$PATH "$BUILD_TOOLS/apksigner" sign --ks "./keystore.jks" --ks-pass pass:android --out "../MWC Wallet Android App v$VERSION.apk" "./build/MWC Wallet_aligned.apk"
 
 # Cleanup
-rm -rf "./master.zip" "./mwcwallet.com-master" "./build"
+rm -rf "./build" "./master.zip" "./mwcwallet.com-master"
+sed -i "s/android:versionName=\".*\"/android:versionName=\"\"/" "./AndroidManifest.xml"
 
 # Check if adb is provided
 if [[ -v ADB ]]; then

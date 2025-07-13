@@ -10,6 +10,16 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothGatt;
+import android.bluetooth.BluetoothGattCallback;
+import android.bluetooth.BluetoothGattCharacteristic;
+import android.bluetooth.BluetoothGattDescriptor;
+import android.bluetooth.BluetoothGattService;
+import android.bluetooth.BluetoothManager;
+import android.bluetooth.BluetoothProfile;
+import android.bluetooth.BluetoothStatusCodes;
 import android.content.BroadcastReceiver;
 import android.content.ContentValues;
 import android.content.ContentResolver;
@@ -33,12 +43,12 @@ import android.Manifest;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
+import android.os.Environment;
 import android.os.Message;
 import android.provider.MediaStore;
 import android.util.Pair;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewTreeObserver;
 import android.webkit.ConsoleMessage;
@@ -62,6 +72,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.xmlpull.v1.XmlPullParser;
@@ -73,7 +85,7 @@ import org.xmlpull.v1.XmlPullParser;
 public final class MainActivity extends Activity {
 
 	// USB device array list item class
-	private class UsbDeviceArrayListItem extends Object {
+	private final class UsbDeviceArrayListItem extends Object {
 	
 		// Constructor
 		public UsbDeviceArrayListItem(final UsbDevice usbDevice) {
@@ -86,7 +98,8 @@ public final class MainActivity extends Activity {
 		@Override public final String toString() {
 		
 			// Return USB device's product name
-			return usbDevice.getProductName();
+			final String productName = usbDevice.getProductName();
+			return (productName == null) ? "" : productName;
 		}
 		
 		// Get USB device
@@ -98,6 +111,35 @@ public final class MainActivity extends Activity {
 		
 		// USB device
 		private UsbDevice usbDevice;
+	}
+	
+	// Bluetooth device array list item class
+	private final class BluetoothDeviceArrayListItem extends Object {
+	
+		// Constructor
+		public BluetoothDeviceArrayListItem(final BluetoothDevice bluetoothDevice) {
+		
+			// Set Bluetooth device to Bluetooth device
+			this.bluetoothDevice = bluetoothDevice;
+		}
+		
+		// To string
+		@Override public final String toString() {
+		
+			// Return Bluetooth device's name
+			final String name = bluetoothDevice.getName();
+			return (name == null) ? "" : name;
+		}
+		
+		// Get Bluetooth device
+		public BluetoothDevice getBluetoothDevice() {
+		
+			// Return Bluetooth device
+			return bluetoothDevice;
+		}
+		
+		// Bluetooth device
+		private BluetoothDevice bluetoothDevice;
 	}
 	
 	// On create
@@ -121,6 +163,7 @@ public final class MainActivity extends Activity {
 		currentFileChooserCallback = null;
 		currentNotification = null;
 		currentRequestUsbDeviceId = null;
+		currentRequestBluetoothDeviceId = null;
 		
 		// Create notification channel
 		final NotificationChannel notificationChannel = new NotificationChannel(getPackageName(), getString(R.string.ApplicationLabel), NotificationManager.IMPORTANCE_MAX);
@@ -134,7 +177,6 @@ public final class MainActivity extends Activity {
 		webView = new WebView(this);
 		
 		// Check if device supports being a USB host
-		final MainActivity self = this;
 		final boolean deviceSupportsUsbHost = getPackageManager().hasSystemFeature(PackageManager.FEATURE_USB_HOST);
 		if(deviceSupportsUsbHost) {
 		
@@ -158,7 +200,7 @@ public final class MainActivity extends Activity {
 							case ACTION_USB_DEVICE_PERMISSION:
 							
 								// Check if current request USB device ID exists
-								if(self.currentRequestUsbDeviceId != null) {
+								if(currentRequestUsbDeviceId != null) {
 								
 									// Check if permission was granted
 									if(intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
@@ -176,22 +218,22 @@ public final class MainActivity extends Activity {
 										
 											// Get USB device
 											@SuppressWarnings("deprecation")
-											UsbDevice temp = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+											final UsbDevice temp = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
 											usbDevice = temp;
 										}
 										
 										// Check if USB device exists and is allowed
-										if(usbDevice != null && self.isUsbDeviceAllowed(usbDevice)) {
+										if(usbDevice != null && isUsbDeviceAllowed(usbDevice)) {
 										
 											// Send request USB device response message to web view
-											self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(self.currentRequestUsbDeviceId) + ", \"Data\": {\"ID\": " + JSONObject.quote(Integer.toString(usbDevice.getDeviceId())) + ", \"Manufacturer Name\": " + JSONObject.quote(usbDevice.getManufacturerName()) + ", \"Product Name\": " + JSONObject.quote(usbDevice.getProductName()) + ", \"Vendor ID\": " + usbDevice.getVendorId() + ", \"Product ID\": " + usbDevice.getProductId() + "}}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+											webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(currentRequestUsbDeviceId) + ", \"Data\": {\"ID\": " + JSONObject.quote(Integer.toString(usbDevice.getDeviceId())) + ", \"Manufacturer Name\": " + JSONObject.quote((usbDevice.getManufacturerName() == null) ? "" : usbDevice.getManufacturerName()) + ", \"Product Name\": " + JSONObject.quote((usbDevice.getProductName() == null) ? "" : usbDevice.getProductName()) + ", \"Vendor ID\": " + usbDevice.getVendorId() + ", \"Product ID\": " + usbDevice.getProductId() + "}}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 										}
 										
 										// Otherwise
 										else {
 										
 											// Send request USB device response message to web view
-											self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(self.currentRequestUsbDeviceId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+											webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(currentRequestUsbDeviceId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 										}
 									}
 									
@@ -199,11 +241,11 @@ public final class MainActivity extends Activity {
 									else {
 									
 										// Send request USB device response message to web view
-										self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(self.currentRequestUsbDeviceId) + ", \"Error\": \"Permission denied\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(currentRequestUsbDeviceId) + ", \"Error\": \"Permission denied\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 									}
 									
 									// Set current request USB device ID to nothing
-									self.currentRequestUsbDeviceId = null;
+									currentRequestUsbDeviceId = null;
 								}
 								
 								// Break
@@ -225,15 +267,15 @@ public final class MainActivity extends Activity {
 								
 									// Get USB device
 									@SuppressWarnings("deprecation")
-									UsbDevice temp = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+									final UsbDevice temp = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
 									usbDevice = temp;
 								}
 								
 								// Check if USB device exists and is allowed
-								if(usbDevice != null && self.isUsbDeviceAllowed(usbDevice)) {
+								if(usbDevice != null && isUsbDeviceAllowed(usbDevice)) {
 								
 									// Send USB device disconnect event message to web view
-									self.webView.postWebMessage(new WebMessage("{\"Event\": \"USB Device Disconnected\", \"Data\": " + JSONObject.quote(Integer.toString(usbDevice.getDeviceId())) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+									webView.postWebMessage(new WebMessage("{\"Event\": \"USB Device Disconnected\", \"Data\": " + JSONObject.quote(Integer.toString(usbDevice.getDeviceId())) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 								}
 								
 								// Break
@@ -262,16 +304,66 @@ public final class MainActivity extends Activity {
 		webView.clearCache(true);
 		
 		// Add mobile app JavaScript interface
-		final Map<String, byte[]> postData = new HashMap<String, byte[]>();
+		final MainActivity self = this;
 		final boolean deviceSupportsCameras = getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY);
+		final boolean deviceSupportsBluetooth = getPackageManager().hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE);
+		final Map<String, byte[]> postData = new HashMap<String, byte[]>();
 		final Map<String, Pair<UsbDevice, UsbDeviceConnection>> openedUsbDevices = new HashMap<String, Pair<UsbDevice, UsbDeviceConnection>>();
+		openedBluetoothDevices = new HashMap<String, Pair<String, BluetoothGatt>>();
+		doneLoading = false;
+		backButtonAllowed = false;
 		webView.addJavascriptInterface(new Object() {
 		
+			// Is splash screen showing
+			@JavascriptInterface public boolean isSplashScreenShowing() {
+			
+				// Use done loading exclusivley
+				synchronized(self) {
+				
+					// Return if not done loading
+					return !doneLoading;
+				}
+			}
+			
+			// Hide splash screen
+			@JavascriptInterface public void hideSplashScreen() {
+			
+				// Use done loading exclusivley
+				synchronized(self) {
+				
+					// Set done loading to true
+					doneLoading = true;
+				}
+			}
+			
+			// Allow back button
+			@JavascriptInterface public void allowBackButton() {
+			
+				// Use back button allowed exclusivley
+				synchronized(self) {
+				
+					// Set back button allowd to true
+					backButtonAllowed = true;
+				}
+			}
+			
+			// Prevent back button
+			@JavascriptInterface public void preventBackButton() {
+			
+				// Use back button allowed exclusivley
+				synchronized(self) {
+				
+					// Set back button allowd to false
+					backButtonAllowed = false;
+				}
+			}
+			
 			// Get language
 			@JavascriptInterface static public String getLanguage() {
 			
 				// Return language
-				return Locale.getDefault().toLanguageTag();
+				final Locale defaultLocale = Locale.getDefault();
+				return (defaultLocale != null && defaultLocale.toLanguageTag() != null) ? defaultLocale.toLanguageTag() : "";
 			}
 			
 			// Set post data
@@ -302,66 +394,119 @@ public final class MainActivity extends Activity {
 						final ContentValues contentValues = new ContentValues();
 						contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
 						contentValues.put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream");
+						contentValues.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
 						
-						// Check if creating file was successful
-						final ContentResolver contentResolver = getContentResolver();
-						final Uri uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues);
-						if(uri != null) {
+						// Try
+						try {
 						
-							// Try
-							try {
+							// Check if creating file was successful
+							final ContentResolver contentResolver = getContentResolver();
+							final Uri uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues);
+							if(uri != null) {
 							
-								// Check if getting cursor for file's name was successful
-								final Cursor cursor = contentResolver.query(uri, new String[] {MediaStore.MediaColumns.DISPLAY_NAME}, null, null, null);
-								String fileName = name;
-								if(cursor != null) {
+								// Try
+								try {
+								
+									// Check if getting cursor for file's name was successful
+									String actualFileName = null;
+									final Cursor cursor = contentResolver.query(uri, new String[] {MediaStore.MediaColumns.DISPLAY_NAME}, null, null, null);
+									if(cursor != null) {
+									
+										// Try
+										try {
+										
+											// Check if moving cursor was successful
+											if(cursor.moveToFirst()) {
+											
+												// Set actual file name to file's name
+												actualFileName = cursor.getString(0);
+											}
+										}
+										
+										// Finally
+										finally {
+										
+											// Close cursor
+											cursor.close();
+										}
+										
+										// Check if actual file name exists
+										if(actualFileName != null) {
+									
+											// Check if getting file's output stream was successful
+											final OutputStream outputStream = contentResolver.openOutputStream(uri);
+											if(outputStream != null) {
+											
+												// Try
+												try {
+												
+													// Write contents to file
+													outputStream.write(contents);
+												}
+												
+												// Finally
+												finally {
+												
+													// Close file
+													outputStream.close();
+												}
+												
+												// Set current notification to show that saving the file was successful
+												currentNotification = new Notification.Builder(self, getPackageName()).setSmallIcon(R.drawable.logo).setContentTitle(getString(R.string.FileSavedSuccessLabel)).setContentText(String.format(getString(R.string.FileSavedSuccessDescription), actualFileName)).setContentIntent(PendingIntent.getActivity(self, 0, new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE)).setAutoCancel(true).build();
+												
+												// Set current notification is for success to true
+												currentNotificationIsForSuccess = true;
+												
+												// Request post notifications permission
+												requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_POST_NOTIFICATIONS_PERMISSION);
+												
+												// Return
+												return;
+											}
+										}
+									}
+									
+									// Try
+									try {
+									
+										// Delete file
+										contentResolver.delete(uri, null);
+									}
+									
+									// Catch errors
+									catch(final Exception exception) {
+									
+									}
+								}
+								
+								// Catch errors
+								catch(final Exception exception) {
 								
 									// Try
 									try {
 									
-										// Check if moving cursor was successful
-										if(cursor.moveToFirst()) {
-										
-											// Set file name to file's name
-											fileName = cursor.getString(0);
-										}
+										// Delete file
+										contentResolver.delete(uri, null);
 									}
 									
-									// Finally
-									finally {
+									// Catch errors
+									catch(final Exception otherException) {
 									
-										// Close cursor
-										cursor.close();
 									}
 								}
-							
-								// Check if getting file's output stream was successful
-								final OutputStream outputStream = contentResolver.openOutputStream(uri);
-								if(outputStream != null) {
-								
-									// Write contents to file
-									outputStream.write(contents);
-									outputStream.close();
-								}
-								
-								// Set current notification to show that saving the file was successful
-								currentNotification = new Notification.Builder(self, getPackageName()).setSmallIcon(R.drawable.logo).setContentTitle(getString(R.string.FileSavedSuccessLabel)).setContentText(String.format(getString(R.string.FileSavedSuccessDescription), fileName)).setContentIntent(PendingIntent.getActivity(self, 0, new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS), PendingIntent.FLAG_IMMUTABLE)).setAutoCancel(true).build();
-								
-								// Request post notifications permission
-								requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_POST_NOTIFICATIONS_PERMISSION);
-								
-								// Return
-								return;
 							}
-							
-							// Catch errors
-							catch(final Exception exception) {
-							
-							}
+						}
+						
+						// Catch errors
+						catch(final Exception exception) {
+						
 						}
 						
 						// Set current notification to show that saving the file failed
 						currentNotification = new Notification.Builder(self, getPackageName()).setSmallIcon(R.drawable.logo).setContentTitle(getString(R.string.FileSavedFailLabel)).setContentText(getString(R.string.FileSavedFailDescription)).build();
+						
+						// Set current notification is for success to false
+						currentNotificationIsForSuccess = false;
 						
 						// Request post notifications permission
 						requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_POST_NOTIFICATIONS_PERMISSION);
@@ -395,43 +540,55 @@ public final class MainActivity extends Activity {
 						// Check if device supports being a USB host
 						if(deviceSupportsUsbHost) {
 						
-							// Try
-							try {
+							// Check if getting connected USB devices was successful
+							final HashMap<String, UsbDevice> connectedUsbDevices = ((UsbManager)getSystemService(USB_SERVICE)).getDeviceList();
+							if(connectedUsbDevices != null) {
 							
-								// Go through all USB devices
-								final JSONArray usbDevices = new JSONArray();
-								for(final UsbDevice usbDevice : ((UsbManager)getSystemService(USB_SERVICE)).getDeviceList().values()) {
+								// Try
+								try {
 								
-									// Check if USB device exists and is allowed
-									if(usbDevice != null && self.isUsbDeviceAllowed(usbDevice)) {
+									// Go through all connected USB devices
+									final JSONArray usbDevices = new JSONArray();
+									for(final UsbDevice usbDevice : connectedUsbDevices.values()) {
 									
-										// Add USB device to list
-										usbDevices.put(new JSONObject() {{
+										// Check if USB device exists and is allowed
+										if(usbDevice != null && isUsbDeviceAllowed(usbDevice)) {
 										
-											put("ID", Integer.toString(usbDevice.getDeviceId()));
-											put("Manufacturer Name", usbDevice.getManufacturerName());
-											put("Product Name", usbDevice.getProductName());
-											put("Vendor ID", usbDevice.getVendorId());
-											put("Product ID", usbDevice.getProductId());
-										}});
+											// Add USB device to list
+											usbDevices.put(new JSONObject() {{
+											
+												put("ID", Integer.toString(usbDevice.getDeviceId()));
+												put("Manufacturer Name", (usbDevice.getManufacturerName() == null) ? "" : usbDevice.getManufacturerName());
+												put("Product Name", (usbDevice.getProductName() == null) ? "" : usbDevice.getProductName());
+												put("Vendor ID", usbDevice.getVendorId());
+												put("Product ID", usbDevice.getProductId());
+											}});
+										}
 									}
-								}
-							
-								// Send get USB devices response message to web view
-								self.webView.postWebMessage(new WebMessage((new JSONObject() {{
 								
-									// Get USB devices response
-									put("USB Request ID", requestId);
-									put("Data", usbDevices);
+									// Send get USB devices response message to web view
+									webView.postWebMessage(new WebMessage((new JSONObject() {{
 									
-								}}).toString()), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										// Get USB devices response
+										put("USB Request ID", requestId);
+										put("Data", usbDevices);
+										
+									}}).toString()), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								}
+								
+								// Catch errors
+								catch(final Exception exception) {
+								
+									// Send USB devices response message to web view
+									webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								}
 							}
 							
-							// Catch errors
-							catch(final Exception exception) {
+							// Otherwise
+							else {
 							
 								// Send USB devices response message to web view
-								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 						}
 						
@@ -439,7 +596,7 @@ public final class MainActivity extends Activity {
 						else {
 						
 							// Send USB devices response message to web view
-							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					});
 				}
@@ -457,63 +614,75 @@ public final class MainActivity extends Activity {
 						// Check if device supports being a USB host
 						if(deviceSupportsUsbHost) {
 						
-							// Create USB devices
-							final ArrayList<UsbDeviceArrayListItem> usbDevices = new ArrayList<UsbDeviceArrayListItem>();
-							
-							// Go through all USB devices
+							// Check if getting connected USB devices was successful
 							final UsbManager usbManager = (UsbManager)getSystemService(USB_SERVICE);
-							for(final UsbDevice usbDevice : usbManager.getDeviceList().values()) {
+							final HashMap<String, UsbDevice> connectedUsbDevices = usbManager.getDeviceList();
+							if(connectedUsbDevices != null) {
 							
-								// Check if USB device exists and is allowed
-								if(usbDevice != null && self.isUsbDeviceAllowed(usbDevice)) {
+								// Create USB devices
+								final ArrayList<UsbDeviceArrayListItem> usbDevices = new ArrayList<UsbDeviceArrayListItem>();
 								
-									// Add USB device to list
-									usbDevices.add(new UsbDeviceArrayListItem(usbDevice));
+								// Go through all connected USB devices
+								for(final UsbDevice usbDevice : connectedUsbDevices.values()) {
+								
+									// Check if USB device exists and is allowed
+									if(usbDevice != null && isUsbDeviceAllowed(usbDevice)) {
+									
+										// Add USB device to list
+										usbDevices.add(new UsbDeviceArrayListItem(usbDevice));
+									}
 								}
-							}
-							
-							// Check if no applicable USB devices exist
-							if(usbDevices.isEmpty()) {
-							
-								// Send request USB device response message to web view
-								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No device found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								
+								// Check if no applicable USB devices exist
+								if(usbDevices.isEmpty()) {
+								
+									// Send request USB device response message to web view
+									webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No device found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								}
+								
+								// Otherwise
+								else {
+								
+									// Create alert dialog
+									final AlertDialog.Builder alertDialog = new AlertDialog.Builder(self);
+									alertDialog.setTitle(R.string.UsbDeviceChooserLabel);
+									
+									// Set alert's on cancel listener
+									alertDialog.setOnCancelListener(new DialogInterface.OnCancelListener() {
+									
+										// On cancel
+										@Override public final void onCancel(final DialogInterface dialog) {
+										
+											// Send request USB device response message to web view
+											webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No device selected\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										}
+									});
+									
+									// Set alert dialog's adapter
+									final ArrayAdapter<UsbDeviceArrayListItem> arrayAdapter = new ArrayAdapter<UsbDeviceArrayListItem>(self, android.R.layout.select_dialog_singlechoice, usbDevices);
+									alertDialog.setAdapter(arrayAdapter, new DialogInterface.OnClickListener() {
+									
+										// On click
+										@Override public final void onClick(final DialogInterface dialog, final int which) {
+										
+											// Set current request USB device ID to the request ID
+											currentRequestUsbDeviceId = requestId;
+										
+											// Request permission to access the USB device
+											usbManager.requestPermission(arrayAdapter.getItem(which).getUsbDevice(), PendingIntent.getBroadcast(self, 0, new Intent(ACTION_USB_DEVICE_PERMISSION).setPackage(getPackageName()), PendingIntent.FLAG_MUTABLE));
+										}
+									});
+									
+									// Show alert dialog
+									alertDialog.show();
+								}
 							}
 							
 							// Otherwise
 							else {
 							
-								// Create alert dialog
-								final AlertDialog.Builder alertDialog = new AlertDialog.Builder(self);
-								alertDialog.setTitle(R.string.UsbDeviceChooserLabel);
-								
-								// Set alert's on cancel listener
-								alertDialog.setOnCancelListener(new DialogInterface.OnCancelListener() {
-								
-									// On cancel
-									@Override public void onCancel(final DialogInterface dialog) {
-									
-										// Send request USB device response message to web view
-										self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No device selected\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
-									}
-								});
-								
-								// Set alert dialog's adapter
-								final ArrayAdapter<UsbDeviceArrayListItem> arrayAdapter = new ArrayAdapter<UsbDeviceArrayListItem>(self, android.R.layout.select_dialog_singlechoice, usbDevices);
-								alertDialog.setAdapter(arrayAdapter, new DialogInterface.OnClickListener() {
-								
-									// On click
-									@Override public final void onClick(final DialogInterface dialog, final int which) {
-									
-										// Set current request USB device ID to the request ID
-										self.currentRequestUsbDeviceId = requestId;
-									
-										// Request permission to access the USB device
-										usbManager.requestPermission(arrayAdapter.getItem(which).getUsbDevice(), PendingIntent.getBroadcast(self, 0, new Intent(ACTION_USB_DEVICE_PERMISSION).setPackage(getPackageName()), PendingIntent.FLAG_MUTABLE));
-									}
-								});
-								
-								// Show alert dialog
-								alertDialog.show();
+								// Send request USB device response message to web view
+								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 						}
 						
@@ -521,7 +690,7 @@ public final class MainActivity extends Activity {
 						else {
 						
 							// Send request USB device response message to web view
-							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					});
 				}
@@ -539,65 +708,70 @@ public final class MainActivity extends Activity {
 						// Check if device supports being a USB host
 						if(deviceSupportsUsbHost) {
 						
-							// Go through all USB devices
+							// Check if getting connected USB devices was successful
 							final UsbManager usbManager = (UsbManager)getSystemService(USB_SERVICE);
-							for(final UsbDevice usbDevice : usbManager.getDeviceList().values()) {
+							final HashMap<String, UsbDevice> connectedUsbDevices = usbManager.getDeviceList();
+							if(connectedUsbDevices != null) {
 							
-								// Check if USB device exists and has the correct device ID
-								if(usbDevice != null && Integer.toString(usbDevice.getDeviceId()).equals(deviceId)) {
+								// Go through all connected USB devices
+								for(final UsbDevice usbDevice : connectedUsbDevices.values()) {
 								
-									// Check if app has permission to access the USB device and the USB device isn't already open and is allowed
-									if(usbManager.hasPermission(usbDevice) && !openedUsbDevices.containsKey(deviceId) && self.isUsbDeviceAllowed(usbDevice)) {
+									// Check if USB device exists and has the correct device ID
+									if(usbDevice != null && Integer.toString(usbDevice.getDeviceId()).equals(deviceId)) {
 									
-										// Check if opening the USB device was successful
-										final UsbDeviceConnection usbDeviceConnection = usbManager.openDevice(usbDevice);
-										if(usbDeviceConnection != null) {
+										// Check if app has permission to access the USB device and the USB device isn't already open and is allowed
+										if(usbManager.hasPermission(usbDevice) && !openedUsbDevices.containsKey(deviceId) && isUsbDeviceAllowed(usbDevice)) {
 										
-											// Add opened USB device to list
-											openedUsbDevices.put(deviceId, new Pair<>(usbDevice, usbDeviceConnection));
+											// Check if opening the USB device was successful
+											final UsbDeviceConnection usbDeviceConnection = usbManager.openDevice(usbDevice);
+											if(usbDeviceConnection != null) {
 											
+												// Add opened USB device to list
+												openedUsbDevices.put(deviceId, new Pair<>(usbDevice, usbDeviceConnection));
+												
+												// Send open USB device response message to web view
+												webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+												
+												// Return
+												return;
+											}
+										}
+										
+										// Otherwise check if add doesn't have permission to access USB device
+										else if(!usbManager.hasPermission(usbDevice)) {
+										
 											// Send open USB device response message to web view
-											self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+											webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Permission required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 											
 											// Return
 											return;
 										}
-									}
-									
-									// Otherwise check if add doesn't have permission to access USB device
-									else if(!usbManager.hasPermission(usbDevice)) {
-									
-										// Send open USB device response message to web view
-										self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Permission required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 										
-										// Return
-										return;
-									}
-									
-									// Otherwise check if USB device is already open
-									else if(openedUsbDevices.containsKey(deviceId)) {
-									
-										// Send open USB device response message to web view
-										self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device already open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										// Otherwise check if USB device is already open
+										else if(openedUsbDevices.containsKey(deviceId)) {
 										
-										// Return
-										return;
+											// Send open USB device response message to web view
+											webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device already opened\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+											
+											// Return
+											return;
+										}
+										
+										// Break
+										break;
 									}
-									
-									// Break
-									break;
 								}
 							}
 							
 							// Send open USB device response message to web view
-							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 						
 						// Otherwise
 						else {
 						
 							// Send open USB device response message to web view
-							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					});
 				}
@@ -632,14 +806,14 @@ public final class MainActivity extends Activity {
 								openedUsbDevices.remove(deviceId);
 								
 								// Send close USB device response message to web view
-								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 							
 							// Otherwise
 							else {
 							
 								// Send close USB device response message to web view
-								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 						}
 						
@@ -647,7 +821,7 @@ public final class MainActivity extends Activity {
 						else {
 						
 							// Send close USB device response message to web view
-							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					});
 				}
@@ -678,21 +852,26 @@ public final class MainActivity extends Activity {
 									final UsbConfiguration usbConfiguration = usbDevice.getConfiguration(i);
 									
 									// Check if USB configuration is correct
-									if(usbConfiguration.getId() == configurationId) {
+									if(usbConfiguration != null && usbConfiguration.getId() == configurationId) {
 									
 										// Go through all of the USB configuration's interfaces
 										final JSONArray usbInterfaces = new JSONArray();
 										for(int j = 0; j < usbConfiguration.getInterfaceCount(); ++j) {
 										
-											// Add USB interface's class to list
-											usbInterfaces.put(usbConfiguration.getInterface(j).getInterfaceClass());
+											// Check if USB interface exists
+											final UsbInterface usbInterface = usbConfiguration.getInterface(j);
+											if(usbInterface != null) {
+											
+												// Add USB interface's class to list
+												usbInterfaces.put(usbInterface.getInterfaceClass());
+											}
 										}
 										
 										// Try
 										try {
 										
 											// Send select USB device configuration response message to web view
-											self.webView.postWebMessage(new WebMessage((new JSONObject() {{
+											webView.postWebMessage(new WebMessage((new JSONObject() {{
 											
 												// Select USB device configuration response
 												put("USB Request ID", requestId);
@@ -705,7 +884,7 @@ public final class MainActivity extends Activity {
 										catch(final Exception exception) {
 										
 											// Send select USB device configuration response message to web view
-											self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+											webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 										}
 										
 										// Return
@@ -714,14 +893,14 @@ public final class MainActivity extends Activity {
 								}
 								
 								// Send select USB device configuration response message to web view
-								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 							
 							// Otherwise
 							else {
 							
 								// Send select USB device configuration response message to web view
-								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 						}
 						
@@ -729,7 +908,7 @@ public final class MainActivity extends Activity {
 						else {
 						
 							// Send select USB device configuration response message to web view
-							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					});
 				}
@@ -738,8 +917,8 @@ public final class MainActivity extends Activity {
 			// Claim USB device interface
 			@JavascriptInterface public void claimUsbDeviceInterface(final String requestId, final String deviceId, final int configurationId, final int interfaceNumber) {
 			
-				// Check if request ID and device ID exist
-				if(requestId != null && deviceId != null) {
+				// Check if request ID and device ID exist and interface number is valid
+				if(requestId != null && deviceId != null && interfaceNumber >= 0) {
 				
 					// Run on the UI thread
 					runOnUiThread(() -> {
@@ -761,43 +940,44 @@ public final class MainActivity extends Activity {
 									final UsbConfiguration usbConfiguration = usbDevice.getConfiguration(i);
 									
 									// Check if USB configuration is correct
-									if(usbConfiguration.getId() == configurationId) {
+									if(usbConfiguration != null && usbConfiguration.getId() == configurationId) {
 									
 										// Check if USB configuration's interface exists
 										if(interfaceNumber < usbConfiguration.getInterfaceCount()) {
 										
-											// Get USB interface
+											// Check if getting USB interface was successful
 											final UsbInterface usbInterface = usbConfiguration.getInterface(interfaceNumber);
+											if(usbInterface != null) {
 											
-											// Use USB connection exclusivley
-											boolean result;
-											synchronized(usbDeviceConnection) {
-											
-												// Claim the USB interface
-												result = usbDeviceConnection.claimInterface(usbInterface, true);
-											}
-											
-											// Check if claiming the USB interface was successful
-											if(result) {
-											
-												// Send claim USB device interface response message to web view
-												self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
-											}
-											
-											// Otherwise
-											else {
-											
-												// Send claim USB device interface response message to web view
-												self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+												// Use USB connection exclusivley
+												boolean result;
+												synchronized(usbDeviceConnection) {
+												
+													// Claim the USB interface
+													result = usbDeviceConnection.claimInterface(usbInterface, true);
+												}
+												
+												// Check if claiming the USB interface was successful
+												if(result) {
+												
+													// Send claim USB device interface response message to web view
+													webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+												}
+												
+												// Otherwise
+												else {
+												
+													// Send claim USB device interface response message to web view
+													webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Connection error\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+												}
+												
+												// Return
+												return;
 											}
 										}
 										
-										// Otherwise
-										else {
-										
-											// Send claim USB device interface response message to web view
-											self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No interface found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
-										}
+										// Send claim USB device interface response message to web view
+										webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No interface found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 										
 										// Return
 										return;
@@ -805,14 +985,14 @@ public final class MainActivity extends Activity {
 								}
 								
 								// Send claim USB device interface response message to web view
-								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 							
 							// Otherwise
 							else {
 							
 								// Send claim USB device interface response message to web view
-								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 						}
 						
@@ -820,7 +1000,7 @@ public final class MainActivity extends Activity {
 						else {
 						
 							// Send claim USB device interface response message to web view
-							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					});
 				}
@@ -829,8 +1009,8 @@ public final class MainActivity extends Activity {
 			// Release USB device interface
 			@JavascriptInterface public void releaseUsbDeviceInterface(final String requestId, final String deviceId, final int configurationId, final int interfaceNumber) {
 			
-				// Check if request ID and device ID exist
-				if(requestId != null && deviceId != null) {
+				// Check if request ID and device ID exist and interface number is valid
+				if(requestId != null && deviceId != null && interfaceNumber >= 0) {
 				
 					// Run on the UI thread
 					runOnUiThread(() -> {
@@ -852,43 +1032,44 @@ public final class MainActivity extends Activity {
 									final UsbConfiguration usbConfiguration = usbDevice.getConfiguration(i);
 									
 									// Check if USB configuration is correct
-									if(usbConfiguration.getId() == configurationId) {
+									if(usbConfiguration != null && usbConfiguration.getId() == configurationId) {
 									
 										// Check if USB configuration's interface exists
 										if(interfaceNumber < usbConfiguration.getInterfaceCount()) {
 										
-											// Get USB interface
+											// Check if getting USB interface was successful
 											final UsbInterface usbInterface = usbConfiguration.getInterface(interfaceNumber);
+											if(usbInterface != null) {
 											
-											// Use USB connection exclusivley
-											boolean result;
-											synchronized(usbDeviceConnection) {
-											
-												// Release the USB interface
-												result = usbDeviceConnection.releaseInterface(usbInterface);
-											}
-											
-											// Check if releasing the USB interface was successful
-											if(result) {
-											
-												// Send release USB device interface response message to web view
-												self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
-											}
-											
-											// Otherwise
-											else {
-											
-												// Send release USB device interface response message to web view
-												self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+												// Use USB connection exclusivley
+												boolean result;
+												synchronized(usbDeviceConnection) {
+												
+													// Release the USB interface
+													result = usbDeviceConnection.releaseInterface(usbInterface);
+												}
+												
+												// Check if releasing the USB interface was successful
+												if(result) {
+												
+													// Send release USB device interface response message to web view
+													webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+												}
+												
+												// Otherwise
+												else {
+												
+													// Send release USB device interface response message to web view
+													webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Connection error\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+												}
+												
+												// Return
+												return;
 											}
 										}
 										
-										// Otherwise
-										else {
-										
-											// Send release USB device interface response message to web view
-											self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No interface found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
-										}
+										// Send release USB device interface response message to web view
+										webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No interface found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 										
 										// Return
 										return;
@@ -896,14 +1077,14 @@ public final class MainActivity extends Activity {
 								}
 								
 								// Send release USB device interface response message to web view
-								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 							
 							// Otherwise
 							else {
 							
 								// Send release USB device interface response message to web view
-								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 						}
 						
@@ -911,7 +1092,7 @@ public final class MainActivity extends Activity {
 						else {
 						
 							// Send release USB device interface response message to web view
-							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					});
 				}
@@ -920,8 +1101,8 @@ public final class MainActivity extends Activity {
 			// Transfer USB device out
 			@JavascriptInterface public void transferUsbDeviceOut(final String requestId, final String deviceId, final int configurationId, final int endpointNumber, final byte[] data) {
 			
-				// Check if request ID and device ID exist
-				if(requestId != null && deviceId != null) {
+				// Check if request ID, device ID, and data exist
+				if(requestId != null && deviceId != null && data != null) {
 				
 					// Run on the UI thread
 					runOnUiThread(() -> {
@@ -943,66 +1124,64 @@ public final class MainActivity extends Activity {
 									final UsbConfiguration usbConfiguration = usbDevice.getConfiguration(i);
 									
 									// Check if USB configuration is correct
-									if(usbConfiguration.getId() == configurationId) {
+									if(usbConfiguration != null && usbConfiguration.getId() == configurationId) {
 									
 										// Go through all of the USB configuration's interfaces
 										for(int j = 0; j < usbConfiguration.getInterfaceCount(); ++j) {
 										
-											// Get USB interface
+											// Check if getting USB interface was successful
 											final UsbInterface usbInterface = usbConfiguration.getInterface(j);
+											if(usbInterface != null) {
 											
-											// Go through all of the USB interface's endpoints
-											for(int k = 0; k < usbInterface.getEndpointCount(); ++k) {
+												// Go through all of the USB interface's endpoints
+												for(int k = 0; k < usbInterface.getEndpointCount(); ++k) {
 
-												// Get USB endpoint
-												final UsbEndpoint usbEndpoint = usbInterface.getEndpoint(k);
-												
-												// Check if USB endpoint is correct and is for sending data to the USB device
-												if(usbEndpoint.getEndpointNumber() == endpointNumber && usbEndpoint.getDirection() == UsbConstants.USB_DIR_OUT) {
-												
-													// Create thread
-													new Thread(() -> {
+													// Get USB endpoint
+													final UsbEndpoint usbEndpoint = usbInterface.getEndpoint(k);
 													
-														// Use USB connection exclusivley
-														boolean result;
-														synchronized(usbDeviceConnection) {
+													// Check if USB endpoint is correct and is for sending data to the USB device
+													if(usbEndpoint != null && usbEndpoint.getEndpointNumber() == endpointNumber && usbEndpoint.getDirection() == UsbConstants.USB_DIR_OUT) {
+													
+														// Create thread
+														new Thread(() -> {
 														
-															// Send data to the USB device
-															result = usbDeviceConnection.bulkTransfer(usbEndpoint, data, data.length, 0) == data.length;
-														}
-														
-														// Check if sending data to the USB device was successful
-														if(result) {
-														
+															// Use USB connection exclusivley
+															boolean result;
+															synchronized(usbDeviceConnection) {
+															
+																// Send data to the USB device
+																result = usbDeviceConnection.bulkTransfer(usbEndpoint, data, data.length, 0) == data.length;
+															}
+															
 															// Run on the UI thread
 															runOnUiThread(() -> {
 															
-																// Send transfer USB device out response message to web view
-																self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
-															});
-														}
-														
-														// Otherwise
-														else {
-														
-															// Run on the UI thread
-															runOnUiThread(() -> {
+																// Check if sending data to the USB device was successful
+																if(result) {
 															
-																// Send transfer USB device out response message to web view
-																self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																	// Send transfer USB device out response message to web view
+																	webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																}
+																
+																// Otherwise
+																else {
+																
+																	// Send transfer USB device out response message to web view
+																	webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Connection error\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																}
 															});
-														}
+															
+														}).start();
 														
-													}).start();
-													
-													// Return
-													return;
+														// Return
+														return;
+													}
 												}
 											}
 										}
 										
 										// Send transfer USB device out response message to web view
-										self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No endpoint found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No endpoint found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 										
 										// Return
 										return;
@@ -1010,14 +1189,14 @@ public final class MainActivity extends Activity {
 								}
 								
 								// Send transfer USB device out response message to web view
-								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 							
 							// Otherwise
 							else {
 							
 								// Send transfer USB device out response message to web view
-								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 						}
 						
@@ -1025,7 +1204,7 @@ public final class MainActivity extends Activity {
 						else {
 						
 							// Send transfer USB device out response message to web view
-							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					});
 				}
@@ -1034,8 +1213,8 @@ public final class MainActivity extends Activity {
 			// Transfer USB device in
 			@JavascriptInterface public void transferUsbDeviceIn(final String requestId, final String deviceId, final int configurationId, final int endpointNumber, final int length) {
 			
-				// Check if request ID and device ID exist
-				if(requestId != null && deviceId != null) {
+				// Check if request ID and device ID exist and length is valid
+				if(requestId != null && deviceId != null && length >= 0) {
 				
 					// Run on the UI thread
 					runOnUiThread(() -> {
@@ -1057,67 +1236,65 @@ public final class MainActivity extends Activity {
 									final UsbConfiguration usbConfiguration = usbDevice.getConfiguration(i);
 									
 									// Check if USB configuration is correct
-									if(usbConfiguration.getId() == configurationId) {
+									if(usbConfiguration != null && usbConfiguration.getId() == configurationId) {
 									
 										// Go through all of the USB configuration's interfaces
 										for(int j = 0; j < usbConfiguration.getInterfaceCount(); ++j) {
 										
-											// Get USB interface
+											// Check if getting USB interface was successful
 											final UsbInterface usbInterface = usbConfiguration.getInterface(j);
+											if(usbInterface != null) {
 											
-											// Go through all of the USB interface's endpoints
-											for(int k = 0; k < usbInterface.getEndpointCount(); ++k) {
+												// Go through all of the USB interface's endpoints
+												for(int k = 0; k < usbInterface.getEndpointCount(); ++k) {
 
-												// Get USB endpoint
-												final UsbEndpoint usbEndpoint = usbInterface.getEndpoint(k);
-												
-												// Check if USB endpoint is correct and is for receiving data from the USB device
-												if(usbEndpoint.getEndpointNumber() == endpointNumber && usbEndpoint.getDirection() == UsbConstants.USB_DIR_IN) {
-												
-													// Create thread
-													new Thread(() -> {
+													// Get USB endpoint
+													final UsbEndpoint usbEndpoint = usbInterface.getEndpoint(k);
 													
-														// Use USB connection exclusivley
-														boolean result;
-														final byte[] data = new byte[length];
-														synchronized(usbDeviceConnection) {
+													// Check if USB endpoint is correct and is for receiving data from the USB device
+													if(usbEndpoint != null && usbEndpoint.getEndpointNumber() == endpointNumber && usbEndpoint.getDirection() == UsbConstants.USB_DIR_IN) {
+													
+														// Create thread
+														new Thread(() -> {
 														
-															// Receive data from the USB device
-															result = usbDeviceConnection.bulkTransfer(usbEndpoint, data, length, 0) == length;
-														}
-														
-														// Check if receiving data from the USB device was successful
-														if(result) {
-														
-															// Run on the UI thread
-															runOnUiThread(() -> {
-														
-																// Send transfer USB device in response message to web view
-																self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Data\": " + JSONObject.quote(MainActivity.toHexString(data)) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
-															});
-														}
-														
-														// Otherwise
-														else {
-														
+															// Use USB connection exclusivley
+															boolean result;
+															final byte[] data = new byte[length];
+															synchronized(usbDeviceConnection) {
+															
+																// Receive data from the USB device
+																result = usbDeviceConnection.bulkTransfer(usbEndpoint, data, length, 0) == length;
+															}
+															
 															// Run on the UI thread
 															runOnUiThread(() -> {
 															
-																// Send transfer USB device in response message to web view
-																self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																// Check if receiving data from the USB device was successful
+																if(result) {
+																
+																	// Send transfer USB device in response message to web view
+																	webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Data\": " + JSONObject.quote(MainActivity.toHexString(data)) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																}
+																
+																// Otherwise
+																else {
+																
+																	// Send transfer USB device in response message to web view
+																	webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Connection error\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																}
 															});
-														}
+															
+														}).start();
 														
-													}).start();
-													
-													// Return
-													return;
+														// Return
+														return;
+													}
 												}
 											}
 										}
 										
 										// Send transfer USB device in response message to web view
-										self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No endpoint found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No endpoint found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 										
 										// Return
 										return;
@@ -1125,14 +1302,14 @@ public final class MainActivity extends Activity {
 								}
 								
 								// Send transfer USB device in response message to web view
-								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No configuration found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 							
 							// Otherwise
 							else {
 							
 								// Send transfer USB device in response message to web view
-								self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 							}
 						}
 						
@@ -1140,7 +1317,1251 @@ public final class MainActivity extends Activity {
 						else {
 						
 							// Send transfer USB device in response message to web view
-							self.webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"USB host support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+						}
+					});
+				}
+			}
+			
+			// Device has Bluetooth capabilities
+			@JavascriptInterface public boolean deviceHasBluetoothCapabilities() {
+			
+				// Return if device supports Bluetooth
+				return deviceSupportsBluetooth;
+			}
+			
+			// Request Bluetooth device
+			@JavascriptInterface public void requestBluetoothDevice(final String requestId) {
+			
+				// Check if request ID exists
+				if(requestId != null) {
+				
+					// Run on the UI thread
+					runOnUiThread(() -> {
+					
+						// Check if device supports Bluetooth
+						if(deviceSupportsBluetooth) {
+						
+							// Check if device supports Bluetooth
+							final BluetoothAdapter bluetoothAdapter = ((BluetoothManager)getSystemService(BLUETOOTH_SERVICE)).getAdapter();
+							if(bluetoothAdapter != null) {
+							
+								// Check if Bluetooth is enabled
+								if(bluetoothAdapter.isEnabled()) {
+								
+									// Set current request Bluetooth device ID to the request ID
+									currentRequestBluetoothDeviceId = requestId;
+									
+									// Check if API level is at least S
+									if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+									
+										// Request Bluetooth connect permission
+										requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT}, REQUEST_BLUETOOTH_CONNECT_PERMISSION);
+									}
+									
+									// Otherwise
+									else {
+									
+										// Request Bluetooth permission
+										requestPermissions(new String[]{Manifest.permission.BLUETOOTH}, REQUEST_BLUETOOTH_PERMISSION);
+									}
+								}
+								
+								// Otherwise
+								else {
+								
+									// Send Bluetooth devices response message to web view
+									webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Bluetooth is off\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								}
+								
+								// Return
+								return;
+							}
+						}
+						
+						// Send Bluetooth devices response message to web view
+						webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Bluetooth support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+					});
+				}
+			}
+			
+			// Connect Bluetooth device
+			@JavascriptInterface public void connectBluetoothDevice(final String requestId, final String deviceId) {
+			
+				// Check if request ID and device ID exist
+				if(requestId != null && deviceId != null) {
+				
+					// Run on the UI thread
+					runOnUiThread(() -> {
+					
+						// Check if device supports Bluetooth
+						if(deviceSupportsBluetooth) {
+						
+							// Check if device supports Bluetooth
+							final BluetoothAdapter bluetoothAdapter = ((BluetoothManager)getSystemService(BLUETOOTH_SERVICE)).getAdapter();
+							if(bluetoothAdapter != null) {
+							
+								// Check if Bluetooth is enabled
+								if(bluetoothAdapter.isEnabled()) {
+								
+									// Check if Bluetooth device is open
+									if(openedBluetoothDevices.containsKey(deviceId)) {
+									
+										// Check if Bluetooth device isn't already connected
+										if(openedBluetoothDevices.get(deviceId).second == null) {
+										
+											// Check if getting the Bluetooth device was successful
+											final BluetoothDevice bluetoothDevice = bluetoothAdapter.getRemoteDevice(deviceId);
+											if(bluetoothDevice != null) {
+											
+												// Connect to the GATT server hosted by the Bluetooth device
+												openedBluetoothDevices.put(deviceId, new Pair<>(requestId, bluetoothDevice.connectGatt(self, false, new BluetoothGattCallback() {
+
+													// On connection change
+													@Override public final void onConnectionStateChange(final BluetoothGatt gatt, final int status, final int newState) {
+													
+														// Check if GATT exists
+														if(gatt != null) {
+														
+															// Run on the UI thread
+															runOnUiThread(() -> {
+														
+																// Check if operation was successful
+																if(status == BluetoothGatt.GATT_SUCCESS) {
+																
+																	// Check new state
+																	switch(newState) {
+																	
+																		// Connected state
+																		case BluetoothProfile.STATE_CONNECTED:
+																		
+																			// Check if Bluetooth device is open
+																			if(openedBluetoothDevices.containsKey(deviceId)) {
+																			
+																				// Check if Bluetooth device has a pending request and its to connect to the Bluetooth device
+																				final String currentRequestId = openedBluetoothDevices.get(deviceId).first;
+																				if(currentRequestId != null && currentRequestId.equals(requestId)) {
+																				
+																					// Set that Bluetooth device doesn't have a pending request
+																					openedBluetoothDevices.put(deviceId, new Pair<>(null, openedBluetoothDevices.get(deviceId).second));
+																				
+																					// Send connect Bluetooth device response message to web view
+																					webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																				}
+																			}
+																			
+																			// Break
+																			break;
+																			
+																		// Disconnected state
+																		case BluetoothProfile.STATE_DISCONNECTED:
+																		
+																			// Check if Bluetooth device is open
+																			if(openedBluetoothDevices.containsKey(deviceId)) {
+																			
+																				// Check if Bluetooth device has a pending request
+																				final String currentRequestId = openedBluetoothDevices.get(deviceId).first;
+																				if(currentRequestId != null) {
+																				
+																					// Send response message to web view
+																					webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(currentRequestId) + ", \"Error\": \"Connection error\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																				}
+																				
+																				// Close GATT
+																				gatt.close();
+																				
+																				// Remove opened Bluetooth device from list
+																				openedBluetoothDevices.remove(deviceId);
+																				
+																				// Send Bluetooth device disconnect event message to web view
+																				webView.postWebMessage(new WebMessage("{\"Event\": \"Bluetooth Device Disconnected\", \"Data\": " + JSONObject.quote(deviceId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																			}
+																			
+																			// Break
+																			break;
+																	}
+																}
+																
+																// Otherwise
+																else {
+																
+																	// Check if Bluetooth device is open
+																	if(openedBluetoothDevices.containsKey(deviceId)) {
+																	
+																		// Check if Bluetooth device has a pending request
+																		final String currentRequestId = openedBluetoothDevices.get(deviceId).first;
+																		if(currentRequestId != null) {
+																		
+																			// Send response message to web view
+																			webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(currentRequestId) + ", \"Error\": \"Connection error\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																		}
+																		
+																		// Close GATT
+																		gatt.close();
+																		
+																		// Remove opened Bluetooth device from list
+																		openedBluetoothDevices.remove(deviceId);
+																		
+																		// Send Bluetooth device disconnect event message to web view
+																		webView.postWebMessage(new WebMessage("{\"Event\": \"Bluetooth Device Disconnected\", \"Data\": " + JSONObject.quote(deviceId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																	}
+																}
+															});
+														}
+													}
+													
+													// On services discovered
+													@Override public final void onServicesDiscovered(final BluetoothGatt gatt, final int status) {
+													
+														// Check if GATT exists
+														if(gatt != null) {
+														
+															// Run on the UI thread
+															runOnUiThread(() -> {
+															
+																// Check if operation was successful
+																if(status == BluetoothGatt.GATT_SUCCESS) {
+																
+																	// Check if GATT's services exist
+																	final List<BluetoothGattService> gattServices = gatt.getServices();
+																	if(gattServices != null) {
+																	
+																		// Try
+																		try {
+																		
+																			// Go through all of the GATT's services
+																			final JSONArray services = new JSONArray();
+																			for(final BluetoothGattService gattService : gattServices) {
+																			
+																				// Check if GATT service and its UUID exist
+																				if(gattService != null && gattService.getUuid() != null) {
+																				
+																					// Add service to list
+																					services.put(gattService.getUuid().toString());
+																				}
+																			}
+																			
+																			// Check if Bluetooth device is open
+																			if(openedBluetoothDevices.containsKey(deviceId)) {
+																			
+																				// Check if Bluetooth device has a pending request
+																				final String currentRequestId = openedBluetoothDevices.get(deviceId).first;
+																				if(currentRequestId != null) {
+																				
+																					// Set that Bluetooth device doesn't have a pending request
+																					openedBluetoothDevices.put(deviceId, new Pair<>(null, openedBluetoothDevices.get(deviceId).second));
+																				
+																					// Send get Bluetooth devices services response message to web view
+																					webView.postWebMessage(new WebMessage((new JSONObject() {{
+																					
+																						// Get Bluetooth devices services response
+																						put("Bluetooth Request ID", currentRequestId);
+																						put("Data", services);
+																						
+																					}}).toString()), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																				}
+																			}
+																		}
+																		
+																		// Catch errors
+																		catch(final Exception exception) {
+																		
+																			// Check if Bluetooth device is open
+																			if(openedBluetoothDevices.containsKey(deviceId)) {
+																			
+																				// Check if Bluetooth device has a pending request
+																				final String currentRequestId = openedBluetoothDevices.get(deviceId).first;
+																				if(currentRequestId != null) {
+																				
+																					// Set that Bluetooth device doesn't have a pending request
+																					openedBluetoothDevices.put(deviceId, new Pair<>(null, openedBluetoothDevices.get(deviceId).second));
+																				
+																					// Send get Bluetooth devices services response message to web view
+																					webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(currentRequestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																				}
+																			}
+																		}
+																	}
+																	
+																	// Otherwise
+																	else {
+																	
+																		// Check if Bluetooth device is open
+																		if(openedBluetoothDevices.containsKey(deviceId)) {
+																		
+																			// Check if Bluetooth device has a pending request
+																			final String currentRequestId = openedBluetoothDevices.get(deviceId).first;
+																			if(currentRequestId != null) {
+																			
+																				// Set that Bluetooth device doesn't have a pending request
+																				openedBluetoothDevices.put(deviceId, new Pair<>(null, openedBluetoothDevices.get(deviceId).second));
+																			
+																				// Send get Bluetooth devices services response message to web view
+																				webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(currentRequestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																			}
+																		}
+																	}
+																}
+																
+																// Otherwise
+																else {
+																
+																	// Check if Bluetooth device is open
+																	if(openedBluetoothDevices.containsKey(deviceId)) {
+																	
+																		// Check if Bluetooth device has a pending request
+																		final String currentRequestId = openedBluetoothDevices.get(deviceId).first;
+																		if(currentRequestId != null) {
+																		
+																			// Set that Bluetooth device doesn't have a pending request
+																			openedBluetoothDevices.put(deviceId, new Pair<>(null, openedBluetoothDevices.get(deviceId).second));
+																		
+																			// Send get Bluetooth devices services response message to web view
+																			webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(currentRequestId) + ", \"Error\": \"Connection error\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																		}
+																	}
+																}
+															});
+														}
+													}
+													
+													// On descriptor write
+													@Override public final void onDescriptorWrite(final BluetoothGatt gatt, final BluetoothGattDescriptor descriptor, final int status) {
+													
+														// Run on the UI thread
+														runOnUiThread(() -> {
+														
+															// Check if operation was successful
+															if(status == BluetoothGatt.GATT_SUCCESS) {
+															
+																// Check if Bluetooth device is open
+																if(openedBluetoothDevices.containsKey(deviceId)) {
+																
+																	// Check if Bluetooth device has a pending request
+																	final String currentRequestId = openedBluetoothDevices.get(deviceId).first;
+																	if(currentRequestId != null) {
+																	
+																		// Set that Bluetooth device doesn't have a pending request
+																		openedBluetoothDevices.put(deviceId, new Pair<>(null, openedBluetoothDevices.get(deviceId).second));
+																		
+																		// Send Bluetooth device characteristic notifications response message to web view
+																		webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(currentRequestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																	}
+																}
+															}
+															
+															// Otherwise
+															else {
+															
+																// Check if Bluetooth device is open
+																if(openedBluetoothDevices.containsKey(deviceId)) {
+																
+																	// Check if Bluetooth device has a pending request
+																	final String currentRequestId = openedBluetoothDevices.get(deviceId).first;
+																	if(currentRequestId != null) {
+																	
+																		// Set that Bluetooth device doesn't have a pending request
+																		openedBluetoothDevices.put(deviceId, new Pair<>(null, openedBluetoothDevices.get(deviceId).second));
+																	
+																		// Send Bluetooth device characteristic notifications response message to web view
+																		webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(currentRequestId) + ", \"Error\": \"Connection error\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																	}
+																}
+															}
+														});
+													}
+													
+													// On characteristic write
+													@Override public final void onCharacteristicWrite(final BluetoothGatt gatt, final BluetoothGattCharacteristic characteristic, final int status) {
+													
+														// Run on the UI thread
+														runOnUiThread(() -> {
+														
+															// Check if operation was successful
+															if(status == BluetoothGatt.GATT_SUCCESS) {
+															
+																// Check if Bluetooth device is open
+																if(openedBluetoothDevices.containsKey(deviceId)) {
+																
+																	// Check if Bluetooth device has a pending request
+																	final String currentRequestId = openedBluetoothDevices.get(deviceId).first;
+																	if(currentRequestId != null) {
+																	
+																		// Set that Bluetooth device doesn't have a pending request
+																		openedBluetoothDevices.put(deviceId, new Pair<>(null, openedBluetoothDevices.get(deviceId).second));
+																	
+																		// Send write Bluetooth device characteristic response message to web view
+																		webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(currentRequestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																	}
+																}
+															}
+															
+															// Otherwise
+															else {
+															
+																// Check if Bluetooth device is open
+																if(openedBluetoothDevices.containsKey(deviceId)) {
+																
+																	// Check if Bluetooth device has a pending request
+																	final String currentRequestId = openedBluetoothDevices.get(deviceId).first;
+																	if(currentRequestId != null) {
+																	
+																		// Set that Bluetooth device doesn't have a pending request
+																		openedBluetoothDevices.put(deviceId, new Pair<>(null, openedBluetoothDevices.get(deviceId).second));
+																	
+																		// Send write Bluetooth device characteristic response message to web view
+																		webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(currentRequestId) + ", \"Error\": \"Connection error\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																	}
+																}
+															}
+														});
+													}
+													
+													// On characteristic changed
+													@SuppressWarnings("deprecation")
+													@Override public final void onCharacteristicChanged(final BluetoothGatt gatt, final BluetoothGattCharacteristic characteristic) {
+													
+														// Check if characteristic exist
+														if(characteristic != null) {
+														
+															// Check if characteristic's value exists
+															@SuppressWarnings("deprecation")
+															final byte[] characteristicValue = characteristic.getValue();
+															if(characteristicValue != null) {
+															
+																// Get characteristic's value as a hex string
+																final String value = MainActivity.toHexString(characteristicValue);
+																
+																// Run on the UI thread
+																runOnUiThread(() -> {
+																
+																	// Check if Bluetooth device is open and UUIDs exist
+																	if(openedBluetoothDevices.containsKey(deviceId) && characteristic.getService() != null && characteristic.getService().getUuid() != null && characteristic.getUuid() != null) {
+																	
+																		// Send Bluetooth device characteristic changed event message to web view
+																		webView.postWebMessage(new WebMessage("{\"Event\": \"Bluetooth Device Characteristic Changed\", \"Data\": {\"ID\": " + JSONObject.quote(deviceId) + ", \"Service\": " + JSONObject.quote(characteristic.getService().getUuid().toString()) + ", \"Characteristic\": " + JSONObject.quote(characteristic.getUuid().toString()) + ", \"Value\": " + JSONObject.quote(value) + "}}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																	}
+																});
+															}
+														}
+													}
+													
+													// On characteristic changed
+													@Override public final void onCharacteristicChanged(final BluetoothGatt gatt, final BluetoothGattCharacteristic characteristic, final byte[] value) {
+													
+														// Check if characteristic and value exist
+														if(characteristic != null && value != null) {
+														
+															// Run on the UI thread
+															runOnUiThread(() -> {
+															
+																// Check if Bluetooth device is open and UUIDs exist
+																if(openedBluetoothDevices.containsKey(deviceId) && characteristic.getService() != null && characteristic.getService().getUuid() != null && characteristic.getUuid() != null) {
+																
+																	// Send Bluetooth device characteristic changed event message to web view
+																	webView.postWebMessage(new WebMessage("{\"Event\": \"Bluetooth Device Characteristic Changed\", \"Data\": {\"ID\": " + JSONObject.quote(deviceId) + ", \"Service\": " + JSONObject.quote(characteristic.getService().getUuid().toString()) + ", \"Characteristic\": " + JSONObject.quote(characteristic.getUuid().toString()) + ", \"Value\": " + JSONObject.quote(MainActivity.toHexString(value)) + "}}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																}
+															});
+														}
+													}
+												})));
+											}
+											
+											// Otherwise
+											else {
+											
+												// Send connect Bluetooth device response message to web view
+												webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+											}
+										}
+										
+										// Otherwise
+										else {
+										
+											// Send connect Bluetooth device response message to web view
+											webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device already connected\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										}
+									}
+									
+									// Otherwise
+									else {
+									
+										// Send connect Bluetooth device response message to web view
+										webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+									}
+								}
+								
+								// Otherwise
+								else {
+								
+									// Send Bluetooth devices response message to web view
+									webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Bluetooth is off\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								}
+								
+								// Return
+								return;
+							}
+						}
+						
+						// Send connect Bluetooth device response message to web view
+						webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Bluetooth support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+					});
+				}
+			}
+			
+			// Disconnect Bluetooth device
+			@JavascriptInterface public void disconnectBluetoothDevice(final String deviceId) {
+			
+				// Check if device ID exists
+				if(deviceId != null) {
+				
+					// Run on the UI thread
+					runOnUiThread(() -> {
+					
+						// Check if Bluetooth device is open
+						if(openedBluetoothDevices.containsKey(deviceId)) {
+						
+							// Check if Bluetooth device has a pending request
+							final String currentRequestId = openedBluetoothDevices.get(deviceId).first;
+							if(currentRequestId != null) {
+							
+								// Send response message to web view
+								webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(currentRequestId) + ", \"Error\": \"Connection error\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							}
+							
+							// Get Bluetooth GATT
+							final BluetoothGatt bluetoothGatt = openedBluetoothDevices.get(deviceId).second;
+							
+							// Check if Bluetooth GATT is connected
+							if(bluetoothGatt != null) {
+							
+								// Disconnect Bluetooth GATT
+								bluetoothGatt.disconnect();
+								
+								// Close Bluetooth GATT
+								bluetoothGatt.close();
+							}
+							
+							// Remove opened Bluetooth device from list
+							openedBluetoothDevices.remove(deviceId);
+							
+							// Send Bluetooth device disconnect event message to web view
+							webView.postWebMessage(new WebMessage("{\"Event\": \"Bluetooth Device Disconnected\", \"Data\": " + JSONObject.quote(deviceId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+						}
+					});
+				}
+			}
+			
+			// Get Bluetooth device services
+			@JavascriptInterface public void getBluetoothDeviceServices(final String requestId, final String deviceId) {
+			
+				// Check if request ID and device ID exist
+				if(requestId != null && deviceId != null) {
+				
+					// Run on the UI thread
+					runOnUiThread(() -> {
+					
+						// Check if device supports Bluetooth
+						if(deviceSupportsBluetooth) {
+						
+							// Check if Bluetooth device is open
+							if(openedBluetoothDevices.containsKey(deviceId)) {
+							
+								// Get Bluetooth GATT
+								final BluetoothGatt bluetoothGatt = openedBluetoothDevices.get(deviceId).second;
+								
+								// Check if Bluetooth GATT is connected
+								if(bluetoothGatt != null) {
+								
+									// Check if Bluetooth device doesn't have a pending request
+									if(openedBluetoothDevices.get(deviceId).first == null) {
+									
+										// Check if starting discovering Bluetooth GATT's services was successful
+										if(bluetoothGatt.discoverServices()) {
+										
+											// Set that Bluetooth device has a pending request
+											openedBluetoothDevices.put(deviceId, new Pair<>(requestId, bluetoothGatt));
+											
+											// Return
+											return;
+										}
+									}
+									
+									// Send get Bluetooth devices services response message to web view
+									webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								}
+								
+								// Otherwise
+								else {
+								
+									// Send get Bluetooth devices services response message to web view
+									webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not connected\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								}
+							}
+							
+							// Otherwise
+							else {
+							
+								// Send get Bluetooth devices services response message to web view
+								webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							}
+						}
+						
+						// Otherwise
+						else {
+						
+							// Send get Bluetooth devices services response message to web view
+							webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Bluetooth support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+						}
+					});
+				}
+			}
+			
+			// Get Bluetooth device characteristic
+			@JavascriptInterface public void getBluetoothDeviceCharacteristic(final String requestId, final String deviceId, final String serviceUuid, final String characteristicUuid) {
+			
+				// Check if request ID, device ID, service UUID, and characteristic UUID exist
+				if(requestId != null && deviceId != null && serviceUuid != null && characteristicUuid != null) {
+				
+					// Run on the UI thread
+					runOnUiThread(() -> {
+					
+						// Check if device supports Bluetooth
+						if(deviceSupportsBluetooth) {
+						
+							// Check if Bluetooth device is open
+							if(openedBluetoothDevices.containsKey(deviceId)) {
+							
+								// Get Bluetooth GATT
+								final BluetoothGatt bluetoothGatt = openedBluetoothDevices.get(deviceId).second;
+								
+								// Check if Bluetooth GATT is connected
+								if(bluetoothGatt != null) {
+								
+									// Check if Bluetooth GATT's services exist
+									final List<BluetoothGattService> gattServices = bluetoothGatt.getServices();
+									if(gattServices != null) {
+									
+										// Check if Bluetooth GATT's services were discovered
+										if(!gattServices.isEmpty()) {
+										
+											// Go through all of the Bluetooth GATT's services
+											for(final BluetoothGattService gattService : gattServices) {
+											
+												// Check if GATT service and its UUID exist
+												if(gattService != null && gattService.getUuid() != null) {
+												
+													// Check if GATT service is correct
+													if(gattService.getUuid().toString().equals(serviceUuid)) {
+													
+														// Check if GATT service's characteristics exist
+														final List<BluetoothGattCharacteristic> gattCharacteristics = gattService.getCharacteristics();
+														if(gattCharacteristics != null) {
+														
+															// Go through all of the GATT service's characteristics
+															for(final BluetoothGattCharacteristic gattCharacteristic : gattCharacteristics) {
+															
+																// Check if GATT characteristic and its UUID exist
+																if(gattCharacteristic != null && gattCharacteristic.getUuid() != null) {
+																
+																	// Check if GATT characteristic is correct
+																	if(gattCharacteristic.getUuid().toString().equals(characteristicUuid)) {
+																	
+																		// Send get Bluetooth device characteristic response message to web view
+																		webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + "}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																		
+																		// Return
+																		return;
+																	}
+																}
+															}
+														}
+														
+														// Send get Bluetooth device characteristic response message to web view
+														webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No characteristic found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+														
+														// Return
+														return;
+													}
+												}
+											}
+											
+											// Send get Bluetooth device characteristic response message to web view
+											webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No service found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										}
+										
+										// Otherwise
+										else {
+										
+											// Send get Bluetooth device characteristic response message to web view
+											webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Services not discovered\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										}
+									}
+									
+									// Otherwise
+									else {
+									
+										// Send get Bluetooth device characteristic response message to web view
+										webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+									}
+								}
+								
+								// Otherwise
+								else {
+								
+									// Send get Bluetooth device characteristic response message to web view
+									webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not connected\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								}
+							}
+							
+							// Otherwise
+							else {
+							
+								// Send get Bluetooth device characteristic response message to web view
+								webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							}
+						}
+						
+						// Otherwise
+						else {
+						
+							// Send get Bluetooth device characteristic response message to web view
+							webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Bluetooth support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+						}
+					});
+				}
+			}
+			
+			// Start Bluetooth device characteristic notifications
+			@JavascriptInterface public void startBluetoothDeviceCharacteristicNotifications(final String requestId, final String deviceId, final String serviceUuid, final String characteristicUuid) {
+			
+				// Check if request ID, device ID, service UUID, and characteristic UUID exist
+				if(requestId != null && deviceId != null && serviceUuid != null && characteristicUuid != null) {
+				
+					// Run on the UI thread
+					runOnUiThread(() -> {
+					
+						// Check if device supports Bluetooth
+						if(deviceSupportsBluetooth) {
+						
+							// Check if Bluetooth device is open
+							if(openedBluetoothDevices.containsKey(deviceId)) {
+							
+								// Get Bluetooth GATT
+								final BluetoothGatt bluetoothGatt = openedBluetoothDevices.get(deviceId).second;
+								
+								// Check if Bluetooth GATT is connected
+								if(bluetoothGatt != null) {
+								
+									// Check if Bluetooth GATT's services exist
+									final List<BluetoothGattService> gattServices = bluetoothGatt.getServices();
+									if(gattServices != null) {
+									
+										// Check if Bluetooth GATT's services were discovered
+										if(!gattServices.isEmpty()) {
+										
+											// Go through all of the Bluetooth GATT's services
+											for(final BluetoothGattService gattService : gattServices) {
+											
+												// Check if GATT service and its UUID exist
+												if(gattService != null && gattService.getUuid() != null) {
+												
+													// Check if GATT service is correct
+													if(gattService.getUuid().toString().equals(serviceUuid)) {
+													
+														// Check if GATT service's characteristics exist
+														final List<BluetoothGattCharacteristic> gattCharacteristics = gattService.getCharacteristics();
+														if(gattCharacteristics != null) {
+														
+															// Go through all of the GATT service's characteristics
+															for(final BluetoothGattCharacteristic gattCharacteristic : gattCharacteristics) {
+															
+																// Check if GATT characteristic and its UUID exist
+																if(gattCharacteristic != null && gattCharacteristic.getUuid() != null) {
+																
+																	// Check if GATT characteristic is correct
+																	if(gattCharacteristic.getUuid().toString().equals(characteristicUuid)) {
+																	
+																		// Check if getting GATT characteristic's descriptor was successful
+																		final BluetoothGattDescriptor gattDescriptor = gattCharacteristic.getDescriptor(CLIENT_CHARACTERISTIC_CONFIGURATION_DESCRIPTOR_UUID);
+																		if(gattDescriptor != null) {
+																		
+																			// Check if enabling notifications on the GATT characteristic was successful
+																			if(bluetoothGatt.setCharacteristicNotification(gattCharacteristic, true)) {
+																			
+																				// Check if API level is at least Tiramisu
+																				if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+																				
+																					// Check if Bluetooth device doesn't have a pending request
+																					if(openedBluetoothDevices.get(deviceId).first == null) {
+																					
+																						// Check if enabling notification on the GATT descriptor was successful
+																						if(bluetoothGatt.writeDescriptor(gattDescriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == BluetoothStatusCodes.SUCCESS) {
+																						
+																							// Set that Bluetooth device has a pending request
+																							openedBluetoothDevices.put(deviceId, new Pair<>(requestId, bluetoothGatt));
+																							
+																							// Return
+																							return;
+																						}
+																					}
+																					
+																					// Send start Bluetooth device characteristic notifications response message to web view
+																					webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																				}
+																				
+																				// Otherwise
+																				else {
+																				
+																					// Check if Bluetooth device doesn't have a pending request
+																					if(openedBluetoothDevices.get(deviceId).first == null) {
+																					
+																						// Check if setting GATT descriptor's value to enable notification was successful
+																						@SuppressWarnings("deprecation")
+																						final boolean tempOne = gattDescriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+																						if(tempOne) {
+																						
+																							// Check if enabling notification on the GATT descriptor was successful
+																							@SuppressWarnings("deprecation")
+																							final boolean tempTwo = bluetoothGatt.writeDescriptor(gattDescriptor);
+																							if(tempTwo) {
+																							
+																								// Set that Bluetooth device has a pending request
+																								openedBluetoothDevices.put(deviceId, new Pair<>(requestId, bluetoothGatt));
+																								
+																								// Return
+																								return;
+																							}
+																						}
+																					}
+																					
+																					// Send start Bluetooth device characteristic notifications response message to web view
+																					webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																				}
+																			}
+																			
+																			// Otherwise
+																			else {
+																			
+																				// Send start Bluetooth device characteristic notifications response message to web view
+																				webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																			}
+																		}
+																		
+																		// Otherwise
+																		else {
+																		
+																			// Send start Bluetooth device characteristic notifications response message to web view
+																			webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No descriptor found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																		}
+																		
+																		// Return
+																		return;
+																	}
+																}
+															}
+														}
+														
+														// Send start Bluetooth device characteristic notifications response message to web view
+														webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No characteristic found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+														
+														// Return
+														return;
+													}
+												}
+											}
+											
+											// Send start Bluetooth device characteristic notifications response message to web view
+											webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No service found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										}
+										
+										// Otherwise
+										else {
+										
+											// Send start Bluetooth device characteristic notifications response message to web view
+											webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Services not discovered\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										}
+									}
+									
+									// Otherwise
+									else {
+									
+										// Send start Bluetooth device characteristic notifications response message to web view
+										webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+									}
+								}
+								
+								// Otherwise
+								else {
+								
+									// Send start Bluetooth device characteristic notifications response message to web view
+									webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not connected\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								}
+							}
+							
+							// Otherwise
+							else {
+							
+								// Send start Bluetooth device characteristic notifications response message to web view
+								webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							}
+						}
+						
+						// Otherwise
+						else {
+						
+							// Send start Bluetooth device characteristic notifications response message to web view
+							webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Bluetooth support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+						}
+					});
+				}
+			}
+			
+			// Stop Bluetooth device characteristic notifications
+			@JavascriptInterface public void stopBluetoothDeviceCharacteristicNotifications(final String requestId, final String deviceId, final String serviceUuid, final String characteristicUuid) {
+			
+				// Check if request ID, device ID, service UUID, and characteristic UUID exist
+				if(requestId != null && deviceId != null && serviceUuid != null && characteristicUuid != null) {
+				
+					// Run on the UI thread
+					runOnUiThread(() -> {
+					
+						// Check if device supports Bluetooth
+						if(deviceSupportsBluetooth) {
+						
+							// Check if Bluetooth device is open
+							if(openedBluetoothDevices.containsKey(deviceId)) {
+							
+								// Get Bluetooth GATT
+								final BluetoothGatt bluetoothGatt = openedBluetoothDevices.get(deviceId).second;
+								
+								// Check if Bluetooth GATT is connected
+								if(bluetoothGatt != null) {
+								
+									// Check if Bluetooth GATT's services exist
+									final List<BluetoothGattService> gattServices = bluetoothGatt.getServices();
+									if(gattServices != null) {
+									
+										// Check if Bluetooth GATT's services were discovered
+										if(!gattServices.isEmpty()) {
+										
+											// Go through all of the Bluetooth GATT's services
+											for(final BluetoothGattService gattService : gattServices) {
+											
+												// Check if GATT service and its UUID exist
+												if(gattService != null && gattService.getUuid() != null) {
+												
+													// Check if GATT service is correct
+													if(gattService.getUuid().toString().equals(serviceUuid)) {
+													
+														// Check if GATT service's characteristics exist
+														final List<BluetoothGattCharacteristic> gattCharacteristics = gattService.getCharacteristics();
+														if(gattCharacteristics != null) {
+														
+															// Go through all of the GATT service's characteristics
+															for(final BluetoothGattCharacteristic gattCharacteristic : gattCharacteristics) {
+															
+																// Check if GATT characteristic and its UUID exist
+																if(gattCharacteristic != null && gattCharacteristic.getUuid() != null) {
+																
+																	// Check if GATT characteristic is correct
+																	if(gattCharacteristic.getUuid().toString().equals(characteristicUuid)) {
+																	
+																		// Check if getting GATT characteristic's descriptor was successful
+																		final BluetoothGattDescriptor gattDescriptor = gattCharacteristic.getDescriptor(CLIENT_CHARACTERISTIC_CONFIGURATION_DESCRIPTOR_UUID);
+																		if(gattDescriptor != null) {
+																		
+																			// Check if disabling notifications on the GATT characteristic was successful
+																			if(bluetoothGatt.setCharacteristicNotification(gattCharacteristic, false)) {
+																			
+																				// Check if API level is at least Tiramisu
+																				if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+																				
+																					// Check if Bluetooth device doesn't have a pending request
+																					if(openedBluetoothDevices.get(deviceId).first == null) {
+																					
+																						// Check if disabling notification on the GATT descriptor was successful
+																						if(bluetoothGatt.writeDescriptor(gattDescriptor, BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE) == BluetoothStatusCodes.SUCCESS) {
+																						
+																							// Set that Bluetooth device has a pending request
+																							openedBluetoothDevices.put(deviceId, new Pair<>(requestId, bluetoothGatt));
+																							
+																							// Return
+																							return;
+																						}
+																					}
+																					
+																					// Send stop Bluetooth device characteristic notifications response message to web view
+																					webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																				}
+																				
+																				// Otherwise
+																				else {
+																				
+																					// Check if Bluetooth device doesn't have a pending request
+																					if(openedBluetoothDevices.get(deviceId).first == null) {
+																					
+																						// Check if setting GATT descriptor's value to disable notification was successful
+																						@SuppressWarnings("deprecation")
+																						final boolean tempOne = gattDescriptor.setValue(BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE);
+																						if(tempOne) {
+																						
+																							// Check if disabling notification on the GATT descriptor was successful
+																							@SuppressWarnings("deprecation")
+																							final boolean tempTwo = bluetoothGatt.writeDescriptor(gattDescriptor);
+																							if(tempTwo) {
+																							
+																								// Set that Bluetooth device has a pending request
+																								openedBluetoothDevices.put(deviceId, new Pair<>(requestId, bluetoothGatt));
+																								
+																								// Return
+																								return;
+																							}
+																						}
+																					}
+																					
+																					// Send stop Bluetooth device characteristic notifications response message to web view
+																					webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																				}
+																			}
+																			
+																			// Otherwise
+																			else {
+																			
+																				// Send stop Bluetooth device characteristic notifications response message to web view
+																				webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																			}
+																		}
+																		
+																		// Otherwise
+																		else {
+																		
+																			// Send stop Bluetooth device characteristic notifications response message to web view
+																			webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No descriptor found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																		}
+																		
+																		// Return
+																		return;
+																	}
+																}
+															}
+														}
+														
+														// Send stop Bluetooth device characteristic notifications response message to web view
+														webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No characteristic found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+														
+														// Return
+														return;
+													}
+												}
+											}
+											
+											// Send stop Bluetooth device characteristic notifications response message to web view
+											webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No service found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										}
+										
+										// Otherwise
+										else {
+										
+											// Send stop Bluetooth device characteristic notifications response message to web view
+											webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Services not discovered\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										}
+									}
+									
+									// Otherwise
+									else {
+									
+										// Send stop Bluetooth device characteristic notifications response message to web view
+										webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+									}
+								}
+								
+								// Otherwise
+								else {
+								
+									// Send stop Bluetooth device characteristic notifications response message to web view
+									webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not connected\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								}
+							}
+							
+							// Otherwise
+							else {
+							
+								// Send stop Bluetooth device characteristic notifications response message to web view
+								webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							}
+						}
+						
+						// Otherwise
+						else {
+						
+							// Send stop Bluetooth device characteristic notifications response message to web view
+							webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Bluetooth support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+						}
+					});
+				}
+			}
+			
+			// Write Bluetooth device characteristic
+			@JavascriptInterface public void writeBluetoothDeviceCharacteristic(final String requestId, final String deviceId, final String serviceUuid, final String characteristicUuid, final byte[] data) {
+			
+				// Check if request ID, device ID, service UUID, characteristic UUID, and data exist
+				if(requestId != null && deviceId != null && serviceUuid != null && characteristicUuid != null && data != null) {
+				
+					// Run on the UI thread
+					runOnUiThread(() -> {
+					
+						// Check if device supports Bluetooth
+						if(deviceSupportsBluetooth) {
+						
+							// Check if Bluetooth device is open
+							if(openedBluetoothDevices.containsKey(deviceId)) {
+							
+								// Get Bluetooth GATT
+								final BluetoothGatt bluetoothGatt = openedBluetoothDevices.get(deviceId).second;
+								
+								// Check if Bluetooth GATT is connected
+								if(bluetoothGatt != null) {
+								
+									// Check if Bluetooth GATT's services exist
+									final List<BluetoothGattService> gattServices = bluetoothGatt.getServices();
+									if(gattServices != null) {
+									
+										// Check if Bluetooth GATT's services were discovered
+										if(!gattServices.isEmpty()) {
+										
+											// Go through all of the Bluetooth GATT's services
+											for(final BluetoothGattService gattService : gattServices) {
+											
+												// Check if GATT service and its UUID exist
+												if(gattService != null && gattService.getUuid() != null) {
+												
+													// Check if GATT service is correct
+													if(gattService.getUuid().toString().equals(serviceUuid)) {
+													
+														// Check if GATT service's characteristics exist
+														final List<BluetoothGattCharacteristic> gattCharacteristics = gattService.getCharacteristics();
+														if(gattCharacteristics != null) {
+														
+															// Go through all of the GATT service's characteristics
+															for(final BluetoothGattCharacteristic gattCharacteristic : gattCharacteristics) {
+															
+																// Check if GATT characteristic and its UUID exist
+																if(gattCharacteristic != null && gattCharacteristic.getUuid() != null) {
+																
+																	// Check if GATT characteristic is correct
+																	if(gattCharacteristic.getUuid().toString().equals(characteristicUuid)) {
+																	
+																		// Check if API level is at least Tiramisu
+																		if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+																		
+																			// Check if Bluetooth device doesn't have a pending request
+																			if(openedBluetoothDevices.get(deviceId).first == null) {
+																			
+																				// Check if writing data to the GATT characteristic was successful
+																				if(bluetoothGatt.writeCharacteristic(gattCharacteristic, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothStatusCodes.SUCCESS) {
+																				
+																					// Set that Bluetooth device has a pending request
+																					openedBluetoothDevices.put(deviceId, new Pair<>(requestId, bluetoothGatt));
+																					
+																					// Return
+																					return;
+																				}
+																			}
+																			
+																			// Send write Bluetooth device characteristic response message to web view
+																			webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																		}
+																		
+																		// Otherwise
+																		else {
+																		
+																			// Check if Bluetooth device doesn't have a pending request
+																			if(openedBluetoothDevices.get(deviceId).first == null) {
+																			
+																				// Set GATT characteristic's write type
+																				gattCharacteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+																				
+																				// Check if setting GATT characteristic's value was successful
+																				@SuppressWarnings("deprecation")
+																				final boolean tempOne = gattCharacteristic.setValue(data);
+																				if(tempOne) {
+																				
+																					// Check if writing data to the GATT characteristic was successful
+																					@SuppressWarnings("deprecation")
+																					final boolean tempTwo = bluetoothGatt.writeCharacteristic(gattCharacteristic);
+																					if(tempTwo) {
+																					
+																						// Set that Bluetooth device has a pending request
+																						openedBluetoothDevices.put(deviceId, new Pair<>(requestId, bluetoothGatt));
+																						
+																						// Return
+																						return;
+																					}
+																				}
+																			}
+																			
+																			// Send write Bluetooth device characteristic response message to web view
+																			webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+																		}
+																		
+																		// Return
+																		return;
+																	}
+																}
+															}
+														}
+														
+														// Send write Bluetooth device characteristic response message to web view
+														webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No characteristic found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+														
+														// Return
+														return;
+													}
+												}
+											}
+											
+											// Send write Bluetooth device characteristic response message to web view
+											webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No service found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										}
+										
+										// Otherwise
+										else {
+										
+											// Send write Bluetooth device characteristic response message to web view
+											webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Services not discovered\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+										}
+									}
+									
+									// Otherwise
+									else {
+									
+										// Send write Bluetooth device characteristic response message to web view
+										webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+									}
+								}
+								
+								// Otherwise
+								else {
+								
+									// Send write Bluetooth device characteristic response message to web view
+									webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not connected\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								}
+							}
+							
+							// Otherwise
+							else {
+							
+								// Send write Bluetooth device characteristic response message to web view
+								webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Device not open\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							}
+						}
+						
+						// Otherwise
+						else {
+						
+							// Send write Bluetooth device characteristic response message to web view
+							webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Bluetooth support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					});
 				}
@@ -1250,11 +2671,29 @@ public final class MainActivity extends Activity {
 									// Create connection to server
 									final HttpURLConnection connection = (HttpURLConnection)(new java.net.URI(uri.toString()).toURL().openConnection());
 									
+									// Check if request headers exist
+									final Map<String, String> requestHeaders = request.getRequestHeaders();
+									if(requestHeaders != null) {
+									
+										// Go through all request headers
+										for(final Map.Entry<String, String> header : requestHeaders.entrySet()) {
+										
+											// Check if header isn't a connection or accept encoding header and its value exists
+											final String key = header.getKey();
+											final String value = header.getValue();
+											if(key != null && !key.equalsIgnoreCase("Connection") && !key.equalsIgnoreCase("Accept-Encoding") && value != null) {
+											
+												// Set connection to use header
+												connection.setRequestProperty(key, value);
+											}
+										}
+									}
+									
 									// Configure connection
 									connection.setRequestProperty("Connection", "close");
 									connection.setUseCaches(false);
-									connection.setConnectTimeout(MainActivity.CONNECT_TIMEOUT_MILLISECONDS);
-									connection.setReadTimeout(MainActivity.READ_TIMEOUT_MILLISECONDS);
+									connection.setConnectTimeout(CONNECT_TIMEOUT_MILLISECONDS);
+									connection.setReadTimeout(READ_TIMEOUT_MILLISECONDS);
 									
 									// Check if request is a POST request
 									if(request.getMethod().equals("POST")) {
@@ -1263,22 +2702,63 @@ public final class MainActivity extends Activity {
 										connection.setDoOutput(true);
 										connection.setFixedLengthStreamingMode(requestData.length);
 										
-										// Send request's data
+										// Get connection's output stream
 										final OutputStream outputStream = connection.getOutputStream();
-										outputStream.write(requestData);
-										outputStream.close();
+										
+										// Try
+										try {
+										
+											// Send request's data to the output stream
+											outputStream.write(requestData);
+										}
+										
+										// Finally
+										finally {
+										
+											// Close output stream
+											outputStream.close();
+										}
 									}
 									
-									// Go through all response headers
+									// Create headers
 									final Map<String, String> headers = new HashMap<String, String>();
-									for(final Map.Entry<String, List<String>> header : connection.getHeaderFields().entrySet()) {
 									
-										// Check if header isn't a CORS or connection header
-										final String key = header.getKey();
-										if(key != null && !key.equalsIgnoreCase("Access-Control-Allow-Origin") && !key.equalsIgnoreCase("Access-Control-Allow-Methods") && !key.equalsIgnoreCase("Access-Control-Allow-Headers") && !key.equalsIgnoreCase("Connection")) {
+									// Check if response headers exist
+									final Map<String, List<String>> responseHeaders = connection.getHeaderFields();
+									if(responseHeaders != null) {
+									
+										// Go through all response headers
+										for(final Map.Entry<String, List<String>> header : responseHeaders.entrySet()) {
 										
-											// Append header to list
-											headers.put(key, String.join(", ", header.getValue()));
+											// Check if header isn't a CORS or connection header and its values exists
+											final String key = header.getKey();
+											final List<String> values = header.getValue();
+											if(key != null && !key.equalsIgnoreCase("Access-Control-Allow-Origin") && !key.equalsIgnoreCase("Access-Control-Allow-Methods") && !key.equalsIgnoreCase("Access-Control-Allow-Headers") && !key.equalsIgnoreCase("Connection") && values != null) {
+											
+												// Set values exist to true
+												boolean valuesExist = true;
+												
+												// Go through all values
+												for(final String value : values) {
+												
+													// Check if value doesn't exist
+													if(value == null) {
+													
+														// Set values exist to false
+														valuesExist = false;
+														
+														// Break
+														break;
+													}
+												}
+												
+												// Check if values exist
+												if(valuesExist) {
+												
+													// Append header to list
+													headers.put(key, String.join(", ", values));
+												}
+											}
 										}
 									}
 									
@@ -1366,7 +2846,7 @@ public final class MainActivity extends Activity {
 							if(deviceSupportsCameras) {
 							
 								// Set current permission request
-								self.currentPermissionRequest = request;
+								currentPermissionRequest = request;
 								
 								// Request camera permission
 								requestPermissions(new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA_PERMISSION);
@@ -1389,7 +2869,7 @@ public final class MainActivity extends Activity {
 				if(filePathCallback != null) {
 				
 					// Set current file chooser callback
-					self.currentFileChooserCallback = filePathCallback;
+					currentFileChooserCallback = filePathCallback;
 					
 					// Show file chooser
 					final Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
@@ -1421,7 +2901,7 @@ public final class MainActivity extends Activity {
 					if(hitTestResult != null && hitTestResult.getType() == WebView.HitTestResult.SRC_ANCHOR_TYPE) {
 					
 						// Open request using a web browser
-						startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(hitTestResult.getExtra())));
+						startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(hitTestResult.getExtra())).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
 					}
 				}
 				
@@ -1454,9 +2934,9 @@ public final class MainActivity extends Activity {
 				// View action
 				case Intent.ACTION_VIEW:
 			
-					// Check if transaction's URI exists
+					// Check if transaction's URI and its scheme exists
 					final Uri uri = intent.getData();
-					if(uri != null) {
+					if(uri != null && uri.getScheme() != null) {
 					
 						// Check transaction's scheme
 						switch(uri.getScheme()) {
@@ -1520,7 +3000,26 @@ public final class MainActivity extends Activity {
 								
 								// Break
 								break;
+								
+							// Default
+							default:
+							
+								// Close app
+								finishAndRemoveTask();
+								
+								// Return
+								return;
 						}
+					}
+					
+					// Otherwise
+					else {
+					
+						// Close app
+						finishAndRemoveTask();
+						
+						// Return
+						return;
 					}
 					
 					// Break
@@ -1531,36 +3030,39 @@ public final class MainActivity extends Activity {
 		// Load URI
 		webView.loadUrl(uriBuilder.build().toString());
 		
-		// Wait while the splash screen is shown
-		doneLoading = false;
-		new Handler(Looper.getMainLooper()).postDelayed(() -> {
-		
-			// Set done loading to true
-			doneLoading = true;
-			
-		}, SPLASH_SCREEN_DURATION_MILLISECONDS);
-		
-		// Add on pre-draw listener
+		// Check if content exists
 		final View content = findViewById(android.R.id.content);
-		content.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
+		if(content != null) {
 		
-			// On pre-draw
-			@Override public final boolean onPreDraw() {
+			// Add content on pre-draw listener
+			content.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
 			
-				// Check if done loading
-				if(self.doneLoading) {
+				// On pre-draw
+				@Override public final boolean onPreDraw() {
 				
-					// Remove pre-draw listener
-					content.getViewTreeObserver().removeOnPreDrawListener(this);
+					// Use done loading exclusivley
+					boolean isDoneLoading;
+					synchronized(self) {
 					
-					// Request internet permission
-					requestPermissions(new String[]{Manifest.permission.INTERNET}, REQUEST_INTERNET_PERMISSION);
+						// Set is done loading to if done loading
+						isDoneLoading = doneLoading;
+					}
+					
+					// Check if is done loading
+					if(isDoneLoading) {
+					
+						// Remove content pre-draw listener
+						content.getViewTreeObserver().removeOnPreDrawListener(this);
+						
+						// Request internet permission
+						requestPermissions(new String[]{Manifest.permission.INTERNET}, REQUEST_INTERNET_PERMISSION);
+					}
+					
+					// Return if is done loading
+					return isDoneLoading;
 				}
-				
-				// Return if done loading
-				return self.doneLoading;
-			}
-		});
+			});
+		}
 	}
 	
 	// On new intent
@@ -1575,9 +3077,9 @@ public final class MainActivity extends Activity {
 				// View action
 				case Intent.ACTION_VIEW:
 				
-					// Check if transaction's URI exists
+					// Check if transaction's URI and its scheme exists
 					final Uri uri = intent.getData();
-					if(uri != null) {
+					if(uri != null && uri.getScheme() != null) {
 					
 						// Create message
 						final JSONObject message = new JSONObject();
@@ -1661,6 +3163,9 @@ public final class MainActivity extends Activity {
 								// Default
 								default:
 								
+									// Move to background
+									moveTaskToBack(true);
+									
 									// Return
 									return;
 							}
@@ -1669,12 +3174,22 @@ public final class MainActivity extends Activity {
 						// Catch errors
 						catch(final Exception exception) {
 						
+							// Move to background
+							moveTaskToBack(true);
+							
 							// Return
 							return;
 						}
 						
 						// Send message to web view
 						webView.postWebMessage(new WebMessage(message.toString()), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+					}
+					
+					// Otherwise
+					else {
+					
+						// Move to background
+						moveTaskToBack(true);
 					}
 					
 					// Break
@@ -1699,7 +3214,7 @@ public final class MainActivity extends Activity {
 						
 							// Get USB device
 							@SuppressWarnings("deprecation")
-							UsbDevice temp = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+							final UsbDevice temp = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
 							usbDevice = temp;
 						}
 						
@@ -1707,7 +3222,7 @@ public final class MainActivity extends Activity {
 						if(usbDevice != null && isUsbDeviceAllowed(usbDevice)) {
 						
 							// Send USB device connect event message to web view
-							webView.postWebMessage(new WebMessage("{\"Event\": \"USB Device Connected\", \"Data\": {\"ID\": " + JSONObject.quote(Integer.toString(usbDevice.getDeviceId())) + ", \"Manufacturer Name\": " + JSONObject.quote(usbDevice.getManufacturerName()) + ", \"Product Name\": " + JSONObject.quote(usbDevice.getProductName()) + ", \"Vendor ID\": " + usbDevice.getVendorId() + ", \"Product ID\": " + usbDevice.getProductId() + "}}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							webView.postWebMessage(new WebMessage("{\"Event\": \"USB Device Connected\", \"Data\": {\"ID\": " + JSONObject.quote(Integer.toString(usbDevice.getDeviceId())) + ", \"Manufacturer Name\": " + JSONObject.quote((usbDevice.getManufacturerName() == null) ? "" : usbDevice.getManufacturerName()) + ", \"Product Name\": " + JSONObject.quote((usbDevice.getProductName() == null) ? "" : usbDevice.getProductName()) + ", \"Vendor ID\": " + usbDevice.getVendorId() + ", \"Product ID\": " + usbDevice.getProductId() + "}}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
 						}
 					}
 					
@@ -1756,30 +3271,50 @@ public final class MainActivity extends Activity {
 				// Check if current notification exists
 				if(currentNotification != null) {
 				
-					// Try
-					try {
+					// Check if permission is granted
+					if(grantResults != null && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
 					
 						// Show current notification
 						((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).notify(notificationIndex++, currentNotification);
-					}
 					
-					// Catch errors
-					catch(final Exception exception) {
-					
-					}
-					
-					// Finally
-					finally {
-					
-						// Set current notification to nothing
-						currentNotification = null;
-						
 						// Check if notification index overflowed
 						if(notificationIndex < 0) {
 						
 							// Reset notification index
 							notificationIndex = 0;
 						}
+						
+						// Set current notification to nothing
+						currentNotification = null;
+					}
+					
+					// Otherwise
+					else {
+					
+						// Create alert dialog
+						final AlertDialog.Builder alertDialog = new AlertDialog.Builder(this).setTitle(currentNotification.extras.getCharSequence(Notification.EXTRA_TITLE)).setMessage(currentNotification.extras.getCharSequence(Notification.EXTRA_TEXT)).setNegativeButton(R.string.OkLabel, null);
+						
+						// Check if current notification is for success
+						if(currentNotificationIsForSuccess) {
+						
+							// Set alert dialog's positive button
+							alertDialog.setPositiveButton(R.string.OpenDownloadsLabel, new DialogInterface.OnClickListener() {
+							
+								// On click
+								@Override public final void onClick(final DialogInterface dialog, final int which) {
+								
+									// Open downloads
+									startActivity(new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+								}
+								
+							});
+						}
+						
+						// Set current notification to nothing
+						currentNotification = null;
+						
+						// Show alert dialog
+						alertDialog.show();
 					}
 				}
 				
@@ -1792,9 +3327,145 @@ public final class MainActivity extends Activity {
 				// break
 				break;
 				
-			// Request Bluetooth connect permission
+			// Request Bluetooth connect permission or request bluetooth permission
 			case REQUEST_BLUETOOTH_CONNECT_PERMISSION:
-			
+			case REQUEST_BLUETOOTH_PERMISSION:
+				
+				// Check if current request bluetooth device ID exists
+				if(currentRequestBluetoothDeviceId != null) {
+				
+					// Check if permission is granted
+					if(grantResults != null && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+					
+						// Check if device supports Bluetooth
+						final BluetoothAdapter bluetoothAdapter = ((BluetoothManager)getSystemService(BLUETOOTH_SERVICE)).getAdapter();
+						if(bluetoothAdapter != null) {
+						
+							// Check if Bluetooth is enabled
+							if(bluetoothAdapter.isEnabled()) {
+							
+								// Check if getting paired Bluetooth devices was successful
+								final Set<BluetoothDevice> pairedBluetoothDevices = bluetoothAdapter.getBondedDevices();
+								if(pairedBluetoothDevices != null) {
+							
+									// Create Bluetooth devices
+									final ArrayList<BluetoothDeviceArrayListItem> bluetoothDevices = new ArrayList<BluetoothDeviceArrayListItem>();
+									
+									// Go through all paired Bluetooth devices
+									for(final BluetoothDevice bluetoothDevice : pairedBluetoothDevices) {
+									
+										// Check if Bluetooth device and its address exist
+										if(bluetoothDevice != null && bluetoothDevice.getAddress() != null) {
+										
+											// Add Bluetooth device to list
+											bluetoothDevices.add(new BluetoothDeviceArrayListItem(bluetoothDevice));
+										}
+									}
+									
+									// Check if no applicable Bluetooth devices are paired
+									if(bluetoothDevices.isEmpty()) {
+									
+										// Send Bluetooth devices response message to web view
+										webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(currentRequestBluetoothDeviceId) + ", \"Error\": \"No device found\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+									}
+									
+									// Otherwise
+									else {
+									
+										// Create alert dialog
+										final AlertDialog.Builder alertDialog = new AlertDialog.Builder(this);
+										alertDialog.setTitle(R.string.BluetoothDeviceChooserLabel);
+										
+										// Get request ID
+										final String requestId = currentRequestBluetoothDeviceId;
+										
+										// Set alert's on cancel listener
+										alertDialog.setOnCancelListener(new DialogInterface.OnCancelListener() {
+										
+											// On cancel
+											@Override public final void onCancel(final DialogInterface dialog) {
+											
+												// Send Bluetooth devices response message to web view
+												webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"No device selected\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+											}
+										});
+										
+										// Set alert dialog's adapter
+										final ArrayAdapter<BluetoothDeviceArrayListItem> arrayAdapter = new ArrayAdapter<BluetoothDeviceArrayListItem>(this, android.R.layout.select_dialog_singlechoice, bluetoothDevices);
+										alertDialog.setAdapter(arrayAdapter, new DialogInterface.OnClickListener() {
+										
+											// On click
+											@Override public final void onClick(final DialogInterface dialog, final int which) {
+											
+												// Get selected Bluetooth device
+												final BluetoothDevice bluetoothDevice = arrayAdapter.getItem(which).getBluetoothDevice();
+												
+												// Check if Bluetooth device isn't already opened
+												final String bluetoothDeviceAddress = bluetoothDevice.getAddress();
+												if(!openedBluetoothDevices.containsKey(bluetoothDeviceAddress)) {
+												
+													// Add opened Bluetooth device to list
+													openedBluetoothDevices.put(bluetoothDeviceAddress, new Pair<>(null, null));
+													
+													// Send Bluetooth devices response message to web view
+													webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Data\": {\"ID\": " + JSONObject.quote(bluetoothDeviceAddress) + ", \"Connected\": false}}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+												}
+												
+												// Otherwise
+												else {
+												
+													// Send Bluetooth devices response message to web view
+													webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(requestId) + ", \"Data\": {\"ID\": " + JSONObject.quote(bluetoothDeviceAddress) + ", \"Connected\": " + ((openedBluetoothDevices.get(bluetoothDeviceAddress).second == null) ? "false" : "true") + "}}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+												}
+											}
+										});
+										
+										// Set current request Bluetooth device ID to nothing
+										currentRequestBluetoothDeviceId = null;
+										
+										// Show alert dialog
+										alertDialog.show();
+										
+										// Return
+										return;
+									}
+								}
+								
+								// Otherwise
+								else {
+								
+									// Send Bluetooth devices response message to web view
+									webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(currentRequestBluetoothDeviceId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+								}
+							}
+							
+							// Otherwise
+							else {
+							
+								// Send Bluetooth devices response message to web view
+								webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(currentRequestBluetoothDeviceId) + ", \"Error\": \"Bluetooth is off\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+							}
+						}
+						
+						// Otherwise
+						else {
+						
+							// Send Bluetooth devices response message to web view
+							webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(currentRequestBluetoothDeviceId) + ", \"Error\": \"Bluetooth support required\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+						}
+					}
+					
+					// Otherwise
+					else {
+					
+						// Send Bluetooth devices response message to web view
+						webView.postWebMessage(new WebMessage("{\"Bluetooth Request ID\": " + JSONObject.quote(currentRequestBluetoothDeviceId) + ", \"Error\": \"Permission denied\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
+					}
+					
+					// Set current request Bluetooth device ID to nothing
+					currentRequestBluetoothDeviceId = null;
+				}
+				
 				// Break
 				break;
 				
@@ -1842,79 +3513,116 @@ public final class MainActivity extends Activity {
 		}
 	}
 	
+	// On key down
+	@Override public final boolean onKeyDown(final int keyCode, final KeyEvent event) {
+	
+		// Use back button allowed exclusivley
+		boolean canGoBack;
+		synchronized(this) {
+		
+			// Set can go back to if the back button is allowed
+			canGoBack = backButtonAllowed;
+		}
+		
+		// Check if back button was pressed and can go back
+		if(keyCode == KeyEvent.KEYCODE_BACK && canGoBack) {
+		
+			// Click current section's navigation back button
+			webView.evaluateJavascript("$(\"div.unlocked div.sections > div > div:not(.hide) div.navigation button.back:not(.hide)\").trigger(\"click\");", null);
+			
+			// Return true
+			return true;
+		}
+		
+		// Otherwise
+		else {
+		
+			// Return calling parent function
+			return super.onKeyDown(keyCode, event);
+		}
+	}
+	
 	// Is USB device allowed
 	public boolean isUsbDeviceAllowed(final UsbDevice usbDevice) {
 	
-		// Get USB device filter from resources
-		final XmlResourceParser usbDeviceFilter = getResources().getXml(R.xml.usb_device_filter);
+		// Check if USB device exists
+		if(usbDevice != null) {
 		
-		// Try
-		try {
-		
-			// Go through all entries in the filter
-			for(int eventType = usbDeviceFilter.getEventType(); eventType != XmlPullParser.END_DOCUMENT; eventType = usbDeviceFilter.next()) {
+			// Try
+			try {
 			
-				// Check if entry is a USB device
-				final String name = usbDeviceFilter.getName();
-				if(name != null && name.equals("usb-device") && usbDeviceFilter.getEventType() == XmlPullParser.START_TAG) {
+				// Get USB device filter from resources
+				final XmlResourceParser usbDeviceFilter = getResources().getXml(R.xml.usb_device_filter);
 				
-					// Set has values to true
-					boolean hasValues = true;
+				// Try
+				try {
+				
+					// Go through all entries in the filter
+					for(int eventType = usbDeviceFilter.getEventType(); eventType != XmlPullParser.END_DOCUMENT; eventType = usbDeviceFilter.next()) {
 					
-					// Go through all values for the entry
-					for(int i = 0; i < usbDeviceFilter.getAttributeCount(); ++i) {
-					
-						// Check value's name
-						switch(usbDeviceFilter.getAttributeName(i)) {
+						// Check if entry is a USB device
+						final String name = usbDeviceFilter.getName();
+						if(name != null && name.equals("usb-device") && usbDeviceFilter.getEventType() == XmlPullParser.START_TAG) {
 						
-							// Vendor ID
-							case "vendor-id":
+							// Set has values to true
+							boolean hasValues = true;
 							
-								// Check if the USB device's vendor ID doesn't match the entry's vendor ID
-								if(usbDevice.getVendorId() != Integer.parseInt(usbDeviceFilter.getAttributeValue(i), 16)) {
-								
-									// Set has values to false
-									hasValues = false;
-								}
-								
-								// Break
-								break;
-								
-							// Product ID
-							case "product-id":
+							// Go through all values for the entry
+							for(int i = 0; i < usbDeviceFilter.getAttributeCount(); ++i) {
 							
-								// Check if the USB device's product ID doesn't match the entry's product ID
-								if(usbDevice.getProductId() != Integer.parseInt(usbDeviceFilter.getAttributeValue(i), 16)) {
+								// Check value's name
+								switch(usbDeviceFilter.getAttributeName(i)) {
 								
-									// Set has values to false
-									hasValues = false;
+									// Vendor ID
+									case "vendor-id":
+									
+										// Check if the USB device's vendor ID doesn't match the entry's vendor ID
+										if(usbDevice.getVendorId() != Integer.parseInt(usbDeviceFilter.getAttributeValue(i), 16)) {
+										
+											// Set has values to false
+											hasValues = false;
+										}
+										
+										// Break
+										break;
+										
+									// Product ID
+									case "product-id":
+									
+										// Check if the USB device's product ID doesn't match the entry's product ID
+										if(usbDevice.getProductId() != Integer.parseInt(usbDeviceFilter.getAttributeValue(i), 16)) {
+										
+											// Set has values to false
+											hasValues = false;
+										}
+										
+										// Break
+										break;
 								}
-								
-								// Break
-								break;
+							}
+							
+							// Check if the USB device has all the entry's values
+							if(hasValues) {
+							
+								// Return true
+								return true;
+							}
 						}
 					}
-					
-					// Check if the USB device has all the entry's values
-					if(hasValues) {
-					
-						// Return true
-						return true;
-					}
+				}
+				
+				// Finally
+				finally {
+				
+					// Close USB device filter
+					usbDeviceFilter.close();
 				}
 			}
-		}
-		
-		// Catch errors
-		catch(final Exception exception) {
-		
-		}
-		
-		// Finally
-		finally {
-		
-			// Close USB device filter
-			usbDeviceFilter.close();
+			
+			// Catch errors
+			catch(final Exception exception) {
+			
+			}
 		}
 		
 		// Return false
@@ -1924,144 +3632,177 @@ public final class MainActivity extends Activity {
 	// Get mime type
 	static public String getMineType(final String file) {
 	
-		// Check file's extension
-		final int startOfExtension = file.lastIndexOf(".");
-		switch((startOfExtension == -1) ? "" : file.substring(startOfExtension + ".".length())) {
+		// Check if file exists
+		if(file != null) {
 		
-			// Xml
-			case "xml":
+			// Check file's extension
+			final int startOfExtension = file.lastIndexOf(".");
+			switch((startOfExtension == -1) ? "" : file.substring(startOfExtension + ".".length())) {
 			
-				// Return mime type
-				return "text/xml";
+				// Xml
+				case "xml":
 				
-			// Css
-			case "css":
-			
-				// Return mime type
-				return "text/css";
+					// Return mime type
+					return "text/xml";
+					
+				// Css
+				case "css":
 				
-			// Js
-			case "js":
-			
-				// Return mime type
-				return "application/javascript";
+					// Return mime type
+					return "text/css";
+					
+				// Js
+				case "js":
 				
-			// Json
-			case "json":
-			
-				// Return mime type
-				return "application/json";
+					// Return mime type
+					return "application/javascript";
+					
+				// Json
+				case "json":
 				
-			// Webmanifest
-			case "webmanifest":
-			
-				// Return mime type
-				return "application/manifest+json";
+					// Return mime type
+					return "application/json";
+					
+				// Webmanifest
+				case "webmanifest":
 				
-			// Wasm
-			case "wasm":
-			
-				// Return mime type
-				return "application/wasm";
+					// Return mime type
+					return "application/manifest+json";
+					
+				// Wasm
+				case "wasm":
 				
-			// Svg
-			case "svg":
-			
-				// Return mime type
-				return "image/svg+xml";
+					// Return mime type
+					return "application/wasm";
+					
+				// Svg
+				case "svg":
 				
-			// Ico
-			case "ico":
-			
-				// Return mime type
-				return "image/x-icon";
+					// Return mime type
+					return "image/svg+xml";
+					
+				// Ico
+				case "ico":
 				
-			// Png
-			case "png":
-			
-				// Return mime type
-				return "image/png";
+					// Return mime type
+					return "image/x-icon";
+					
+				// Png
+				case "png":
 				
-			// Woff
-			case "woff":
-			
-				// Return mime type
-				return "font/woff";
+					// Return mime type
+					return "image/png";
+					
+				// Woff
+				case "woff":
 				
-			// Woff2
-			case "woff2":
-			
-				// Return mime type
-				return "font/woff2";
+					// Return mime type
+					return "font/woff";
+					
+				// Woff2
+				case "woff2":
 				
-			// Txt, vert, or frag
-			case "txt":
-			case "vert":
-			case "frag":
-			
-				// Return mime type
-				return "text/plain";
+					// Return mime type
+					return "font/woff2";
+					
+				// Txt, vert, or frag
+				case "txt":
+				case "vert":
+				case "frag":
 				
-			// Default
-			default:
-			
-				// Return mime type
-				return "text/html";
+					// Return mime type
+					return "text/plain";
+					
+				// Default
+				default:
+				
+					// Return mime type
+					return "text/html";
+			}
+		}
+		
+		// Otherwise
+		else {
+		
+			// Return mime type
+			return "text/html";
 		}
 	}
 	
 	// Get encoding
 	static public String getEncoding(final String file) {
 	
-		final int startOfExtension = file.lastIndexOf(".");
-		switch((startOfExtension == -1) ? "" : file.substring(startOfExtension + ".".length())) {
+		// Check if file exists
+		if(file != null) {
 		
-			// Wasm, ico, png, woff, or woff2
-			case "wasm":
-			case "ico":
-			case "png":
-			case "woff":
-			case "woff2":
+			final int startOfExtension = file.lastIndexOf(".");
+			switch((startOfExtension == -1) ? "" : file.substring(startOfExtension + ".".length())) {
 			
-				// Return no encoding
-				return null;
+				// Wasm, ico, png, woff, or woff2
+				case "wasm":
+				case "ico":
+				case "png":
+				case "woff":
+				case "woff2":
 				
-			// Default
-			default:
-			
-				// Return encoding
-				return "UTF-8";
+					// Return no encoding
+					return null;
+					
+				// Default
+				default:
+				
+					// Return encoding
+					return "UTF-8";
+			}
+		}
+		
+		// Otherwise
+		else {
+		
+			// Return encoding
+			return "UTF-8";
 		}
 	}
 	
 	// To hex string
 	static public String toHexString(final byte[] bytes) {
 	
-		// Create hex string
-		final StringBuilder hexString = new StringBuilder(bytes.length * 2);
+		// Check if bytes exist
+		if(bytes != null) {
 		
-		// Go through all bytes
-		for(final byte currentByte : bytes) {
-		
-			// Append current byte to the hex string
-			hexString.append(String.format("%02x", currentByte));
+			// Create hex string
+			final StringBuilder hexString = new StringBuilder(bytes.length * 2);
+			
+			// Go through all bytes
+			for(final byte currentByte : bytes) {
+			
+				// Append current byte to the hex string
+				hexString.append(String.format("%02x", currentByte));
+			}
+			
+			// Return hex string
+			return hexString.toString();
 		}
 		
-		// Return hex string
-		return hexString.toString();
+		// Otherwise
+		else {
+		
+			// Return empty string
+			return "";
+		}
 	}
 	
 	// Action USB device permission
 	static private final String ACTION_USB_DEVICE_PERMISSION = "com.mwcwallet.USB_DEVICE_PERMISSION";
-	
-	// Splash screen duration milliseconds
-	static private int SPLASH_SCREEN_DURATION_MILLISECONDS = 600;
 	
 	// Asset URI scheme
 	static private final String ASSET_URI_SCHEME = "https";
 	
 	// Asset URI authority
 	static private final String ASSET_URI_AUTHORITY = "mwcwallet.com";
+	
+	// Client characteristic configuration descriptor UUID
+	static public final UUID CLIENT_CHARACTERISTIC_CONFIGURATION_DESCRIPTOR_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
 	
 	// Connect timeout milliseconds
 	static public int CONNECT_TIMEOUT_MILLISECONDS = 30 * 1000;
@@ -2081,17 +3822,23 @@ public final class MainActivity extends Activity {
 	// Request Bluetooth connect permission
 	static private final int REQUEST_BLUETOOTH_CONNECT_PERMISSION = 4;
 	
+	// Request Bluetooth permission
+	static private final int REQUEST_BLUETOOTH_PERMISSION = 5;
+	
 	// Request file selection
 	static private final int REQUEST_FILE_SELECTION = 1;
 	
 	// Notification index
 	private int notificationIndex;
 	
-	// Web view
-	public WebView webView;
-	
 	// Done loading
 	public boolean doneLoading;
+	
+	// Back button allowed
+	public boolean backButtonAllowed;
+	
+	// Web view
+	public WebView webView;
 	
 	// Current permission request
 	public PermissionRequest currentPermissionRequest;
@@ -2102,6 +3849,15 @@ public final class MainActivity extends Activity {
 	// Current notification
 	public Notification currentNotification;
 	
+	// Current notification is for success
+	public boolean currentNotificationIsForSuccess;
+	
 	// Current request USB device ID
 	public String currentRequestUsbDeviceId;
+	
+	// Current request Bluetooth device ID
+	public String currentRequestBluetoothDeviceId;
+	
+	// Opened Bluetooth devices
+	public Map<String, Pair<String, BluetoothGatt>> openedBluetoothDevices;
 }

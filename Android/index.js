@@ -7,6 +7,13 @@
 // Check if this is a mobile app
 if(typeof MobileApp !== "undefined") {
 
+	// Check if mobile app's splash screen is showing
+	if(MobileApp.isSplashScreenShowing()) {
+	
+		// Prevent transitions
+		document["body"]["className"] = (typeof document["body"]["className"] === "undefined" || document["body"]["className"] === null || document["body"]["className"]["length"] === 0) ? "splashScreen" : (document["body"]["className"] + " splashScreen");
+	}
+	
 	// Document click event
 	document.addEventListener("click", function(event) {
 	
@@ -422,8 +429,27 @@ if(typeof MobileApp !== "undefined") {
 								// Otherwise
 								else {
 								
-									// Reject
-									reject();
+									// Check error
+									switch(response["Error"]) {
+									
+										// Connection error
+										case "Connection error":
+										
+											// Reject error
+											reject(new DOMException("", "NetworkError"));
+											
+											// Break
+											break;
+											
+										// Default
+										default:
+										
+											// Reject
+											reject();
+											
+											// break
+											break;
+									}
 								}
 							}
 						};
@@ -481,8 +507,27 @@ if(typeof MobileApp !== "undefined") {
 								// Otherwise
 								else {
 								
-									// Reject
-									reject();
+									// Check error
+									switch(response["Error"]) {
+									
+										// Connection error
+										case "Connection error":
+										
+											// Reject error
+											reject(new DOMException("", "NetworkError"));
+											
+											// Break
+											break;
+											
+										// Default
+										default:
+										
+											// Reject
+											reject();
+											
+											// break
+											break;
+									}
 								}
 							}
 						};
@@ -540,8 +585,27 @@ if(typeof MobileApp !== "undefined") {
 								// Otherwise
 								else {
 								
-									// Reject
-									reject();
+									// Check error
+									switch(response["Error"]) {
+									
+										// Connection error
+										case "Connection error":
+										
+											// Reject error
+											reject(new DOMException("", "NetworkError"));
+											
+											// Break
+											break;
+											
+										// Default
+										default:
+										
+											// Reject
+											reject();
+											
+											// break
+											break;
+									}
 								}
 							}
 						};
@@ -608,6 +672,32 @@ if(typeof MobileApp !== "undefined") {
 									});
 								}
 								
+								// Otherwise check if response has an error
+								else if("Error" in response === true) {
+								
+									// Check error
+									switch(response["Error"]) {
+									
+										// Connection error
+										case "Connection error":
+										
+											// Reject error
+											reject(new DOMException("", "NetworkError"));
+											
+											// Break
+											break;
+											
+										// Default
+										default:
+										
+											// Reject
+											reject();
+											
+											// break
+											break;
+									}
+								}
+								
 								// Otherwise
 								else {
 								
@@ -656,8 +746,23 @@ if(typeof MobileApp !== "undefined") {
 					// Initialize USB devices
 					this.usbDevices = {};
 					
-					// Set request ID to zero
-					this.requestId = 0;
+					// Set get current request ID
+					var requestId = 0;
+					this.getCurrentRequestId = function() {
+					
+						// Get current request ID
+						var currentRequestId = requestId++;
+						
+						// Check if current request ID is at the max safe integer
+						if(currentRequestId === Number.MAX_SAFE_INTEGER) {
+						
+							// Reset request ID
+							requestId = 0;
+						}
+						
+						// Return current request ID
+						return currentRequestId;
+					};
 					
 					// Set self
 					var self = this;
@@ -869,8 +974,8 @@ if(typeof MobileApp !== "undefined") {
 									resolve(self.usbDevices[response["Data"]["ID"]]);
 								}
 								
-								// Otherwise check if response's error is valid
-								else if("Error" in response === true && typeof response["Error"] === "string") {
+								// Otherwise check if response has an error
+								else if("Error" in response === true) {
 								
 									// Check error
 									switch(response["Error"]) {
@@ -920,28 +1025,841 @@ if(typeof MobileApp !== "undefined") {
 						MobileApp.requestUsbDevice(currentRequestId.toFixed());
 					});
 				}
-				
-			// Private
-			
-				// Get current request ID
-				getCurrentRequestId() {
-				
-					// Get current request ID
-					var currentRequestId = this.requestId++;
-					
-					// Check if current request ID is at the max safe integer
-					if(currentRequestId === Number.MAX_SAFE_INTEGER) {
-					
-						// Reset request ID
-						this.requestId = 0;
-					}
-					
-					// Return current request ID
-					return currentRequestId;
-				}
 		}
 		
 		// Use mobile app's WebUSB implementation
 		navigator["usb"] = new WebUsb();
+	}
+	
+	// Check if Web Bluetooth isn't supported by the browser and the device supports Bluetooth
+	if("bluetooth" in navigator === false && MobileApp.deviceHasBluetoothCapabilities() === true) {
+	
+		// Bluetooth characteristic class
+		class BluetoothCharacteristic extends EventTarget {
+		
+			// Public
+			
+				// Constructor
+				constructor(getCurrentRequestId, deviceId, serviceUuid, uuid) {
+				
+					// Delegate constructor
+					super();
+					
+					// Set get current request ID to get current request ID
+					this.getCurrentRequestId = getCurrentRequestId;
+					
+					// Set device ID to device ID
+					this.deviceId = deviceId;
+					
+					// Set service UUID to service UUID
+					this.serviceUuid = serviceUuid;
+					
+					// Set UUID to UUID
+					this.uuid = uuid;
+					
+					// Initialize value
+					this.value = {
+					
+						// Buffer
+						"buffer": null
+					};
+				}
+				
+				// Start notifications
+				startNotifications() {
+				
+					// Set self
+					var self = this;
+					
+					// Return promise
+					return new Promise(function(resolve, reject) {
+					
+						// Get current request ID
+						var currentRequestId = self.getCurrentRequestId();
+						
+						// On message event
+						var onMessageEvent = function(event) {
+						
+							// Try
+							try {
+							
+								// Parse message as JSON
+								var response = JSON.parse(event["data"]);
+							}
+							
+							// Catch errors
+							catch(error) {
+							
+								// Return
+								return;
+							}
+							
+							// Check if message is a response for this request
+							if(typeof response === "object" && response !== null && "Bluetooth Request ID" in response === true && response["Bluetooth Request ID"] === currentRequestId.toFixed()) {
+							
+								// Remove this window message event
+								window.removeEventListener("message", onMessageEvent);
+								
+								// Check if response doesn't have an error
+								if("Error" in response === false) {
+								
+									// Resolve
+									resolve();
+								}
+								
+								// Otherwise
+								else {
+								
+									// Check error
+									switch(response["Error"]) {
+									
+										// Connection error
+										case "Connection error":
+										
+											// Reject error
+											reject(new DOMException("", "NetworkError"));
+											
+											// Break
+											break;
+											
+										// Default
+										default:
+										
+											// Reject
+											reject();
+											
+											// break
+											break;
+									}
+								}
+							}
+						};
+						
+						// Window message event
+						window.addEventListener("message", onMessageEvent);
+						
+						// Start Bluetooth device characteristic notifications using mobile app
+						MobileApp.startBluetoothDeviceCharacteristicNotifications(currentRequestId.toFixed(), self.deviceId, self.serviceUuid, self.uuid);
+					});
+				}
+				
+				// Stop notifications
+				stopNotifications() {
+				
+					// Set self
+					var self = this;
+					
+					// Return promise
+					return new Promise(function(resolve, reject) {
+					
+						// Get current request ID
+						var currentRequestId = self.getCurrentRequestId();
+						
+						// On message event
+						var onMessageEvent = function(event) {
+						
+							// Try
+							try {
+							
+								// Parse message as JSON
+								var response = JSON.parse(event["data"]);
+							}
+							
+							// Catch errors
+							catch(error) {
+							
+								// Return
+								return;
+							}
+							
+							// Check if message is a response for this request
+							if(typeof response === "object" && response !== null && "Bluetooth Request ID" in response === true && response["Bluetooth Request ID"] === currentRequestId.toFixed()) {
+							
+								// Remove this window message event
+								window.removeEventListener("message", onMessageEvent);
+								
+								// Check if response doesn't have an error
+								if("Error" in response === false) {
+								
+									// Resolve
+									resolve();
+								}
+								
+								// Otherwise
+								else {
+								
+									// Check error
+									switch(response["Error"]) {
+									
+										// Connection error
+										case "Connection error":
+										
+											// Reject error
+											reject(new DOMException("", "NetworkError"));
+											
+											// Break
+											break;
+											
+										// Default
+										default:
+										
+											// Reject
+											reject();
+											
+											// break
+											break;
+									}
+								}
+							}
+						};
+						
+						// Window message event
+						window.addEventListener("message", onMessageEvent);
+						
+						// Stop Bluetooth device characteristic notifications using mobile app
+						MobileApp.stopBluetoothDeviceCharacteristicNotifications(currentRequestId.toFixed(), self.deviceId, self.serviceUuid, self.uuid);
+					});
+				}
+				
+				// Write value with response
+				writeValueWithResponse(data) {
+				
+					// Set self
+					var self = this;
+					
+					// Return promise
+					return new Promise(function(resolve, reject) {
+					
+						// Get current request ID
+						var currentRequestId = self.getCurrentRequestId();
+						
+						// On message event
+						var onMessageEvent = function(event) {
+						
+							// Try
+							try {
+							
+								// Parse message as JSON
+								var response = JSON.parse(event["data"]);
+							}
+							
+							// Catch errors
+							catch(error) {
+							
+								// Return
+								return;
+							}
+							
+							// Check if message is a response for this request
+							if(typeof response === "object" && response !== null && "Bluetooth Request ID" in response === true && response["Bluetooth Request ID"] === currentRequestId.toFixed()) {
+							
+								// Remove this window message event
+								window.removeEventListener("message", onMessageEvent);
+								
+								// Check if response doesn't have an error
+								if("Error" in response === false) {
+								
+									// Resolve
+									resolve();
+								}
+								
+								// Otherwise
+								else {
+								
+									// Check error
+									switch(response["Error"]) {
+									
+										// Connection error
+										case "Connection error":
+										
+											// Reject error
+											reject(new DOMException("", "NetworkError"));
+											
+											// Break
+											break;
+											
+										// Default
+										default:
+										
+											// Reject
+											reject();
+											
+											// break
+											break;
+									}
+								}
+							}
+						};
+						
+						// Window message event
+						window.addEventListener("message", onMessageEvent);
+						
+						// Write Bluetooth device characteristic using mobile app
+						MobileApp.writeBluetoothDeviceCharacteristic(currentRequestId.toFixed(), self.deviceId, self.serviceUuid, self.uuid, data);
+					});
+				}
+		}
+		
+		// Bluetooth service class
+		class BluetoothService {
+		
+			// Public
+			
+				// Constructor
+				constructor(getCurrentRequestId, deviceId, uuid) {
+				
+					// Set get current request ID to get current request ID
+					this.getCurrentRequestId = getCurrentRequestId;
+					
+					// Set device ID to device ID
+					this.deviceId = deviceId;
+					
+					// Set UUID to UUID
+					this.uuid = uuid;
+					
+					// Initialize Bluetooth characteristics
+					this.bluetoothCharacteristics = {};
+				}
+				
+				// Get characteristic
+				getCharacteristic(characteristicUuid) {
+				
+					// Set self
+					var self = this;
+					
+					// Return promise
+					return new Promise(function(resolve, reject) {
+					
+						// Get current request ID
+						var currentRequestId = self.getCurrentRequestId();
+						
+						// On message event
+						var onMessageEvent = function(event) {
+						
+							// Try
+							try {
+							
+								// Parse message as JSON
+								var response = JSON.parse(event["data"]);
+							}
+							
+							// Catch errors
+							catch(error) {
+							
+								// Return
+								return;
+							}
+							
+							// Check if message is a response for this request
+							if(typeof response === "object" && response !== null && "Bluetooth Request ID" in response === true && response["Bluetooth Request ID"] === currentRequestId.toFixed()) {
+							
+								// Remove this window message event
+								window.removeEventListener("message", onMessageEvent);
+								
+								// Check if response doesn't have an error
+								if("Error" in response === false) {
+								
+									// Add Bluetooth characteristic to list
+									self.bluetoothCharacteristics[characteristicUuid] = new BluetoothCharacteristic(self.getCurrentRequestId, self.deviceId, self.uuid, characteristicUuid);
+									
+									// Resolve Bluetooth characteristic
+									resolve(self.bluetoothCharacteristics[characteristicUuid]);
+								}
+								
+								// Otherwise
+								else {
+								
+									// Reject
+									reject();
+								}
+							}
+						};
+						
+						// Window message event
+						window.addEventListener("message", onMessageEvent);
+						
+						// Get Bluetooth device characteristic using mobile app
+						MobileApp.getBluetoothDeviceCharacteristic(currentRequestId.toFixed(), self.deviceId, self.uuid, characteristicUuid);
+					});
+				}
+		}
+		
+		// Bluetooth GATT class
+		class BluetoothGatt {
+		
+			// Public
+			
+				// Constructor
+				constructor(getCurrentRequestId, deviceId, connected, device) {
+				
+					// Set get current request ID to get current request ID
+					this.getCurrentRequestId = getCurrentRequestId;
+					
+					// Set device ID to device ID
+					this.deviceId = deviceId;
+					
+					// Set connected to connected
+					this.connected = connected;
+					
+					// Set device to device
+					this.device = device;
+					
+					// Initialize Bluetooth services
+					this.bluetoothServices = {};
+				}
+				
+				// Connect
+				connect() {
+				
+					// Set self
+					var self = this;
+					
+					// Return promise
+					return new Promise(function(resolve, reject) {
+					
+						// Get current request ID
+						var currentRequestId = self.getCurrentRequestId();
+						
+						// On message event
+						var onMessageEvent = function(event) {
+						
+							// Try
+							try {
+							
+								// Parse message as JSON
+								var response = JSON.parse(event["data"]);
+							}
+							
+							// Catch errors
+							catch(error) {
+							
+								// Return
+								return;
+							}
+							
+							// Check if message is a response for this request
+							if(typeof response === "object" && response !== null && "Bluetooth Request ID" in response === true && response["Bluetooth Request ID"] === currentRequestId.toFixed()) {
+							
+								// Remove this window message event
+								window.removeEventListener("message", onMessageEvent);
+								
+								// Check if response doesn't have an error
+								if("Error" in response === false) {
+								
+									// Set connected to true
+									self.connected = true;
+									
+									// Resolve self
+									resolve(self);
+								}
+								
+								// Otherwise
+								else {
+								
+									// Check error
+									switch(response["Error"]) {
+									
+										// Connection error
+										case "Connection error":
+										
+											// Reject error
+											reject(new DOMException("", "NetworkError"));
+											
+											// Break
+											break;
+											
+										// Default
+										default:
+										
+											// Reject
+											reject();
+											
+											// break
+											break;
+									}
+								}
+							}
+						};
+						
+						// Window message event
+						window.addEventListener("message", onMessageEvent);
+						
+						// Connect Bluetooth device using mobile app
+						MobileApp.connectBluetoothDevice(currentRequestId.toFixed(), self.deviceId);
+					});
+				}
+				
+				// Disconnect
+				disconnect() {
+				
+					// Disconnect Bluetooth device using mobile app
+					MobileApp.disconnectBluetoothDevice(this.deviceId);
+					
+					// Set connected to false
+					this.connected = false;
+				}
+				
+				// Get primary services
+				getPrimaryServices() {
+				
+					// Reset Bluetooth services
+					this.bluetoothServices = {};
+					
+					// Set self
+					var self = this;
+					
+					// Return promise
+					return new Promise(function(resolve, reject) {
+					
+						// Get current request ID
+						var currentRequestId = self.getCurrentRequestId();
+						
+						// On message event
+						var onMessageEvent = function(event) {
+						
+							// Try
+							try {
+							
+								// Parse message as JSON
+								var response = JSON.parse(event["data"]);
+							}
+							
+							// Catch errors
+							catch(error) {
+							
+								// Return
+								return;
+							}
+							
+							// Check if message is a response for this request
+							if(typeof response === "object" && response !== null && "Bluetooth Request ID" in response === true && response["Bluetooth Request ID"] === currentRequestId.toFixed()) {
+							
+								// Remove this window message event
+								window.removeEventListener("message", onMessageEvent);
+								
+								// Check if response's data is valid
+								if("Data" in response === true && Array.isArray(response["Data"]) === true) {
+								
+									// Create services
+									var services = [];
+									
+									// Go through all services in the response
+									for(var i = 0; i < response["Data"]["length"]; ++i) {
+									
+										// Check if services's UUID is invalid
+										if(typeof response["Data"][i] !== "string") {
+										
+											// Reset Bluetooth services
+											self.bluetoothServices = {};
+											
+											// Reject
+											reject();
+											
+											// Return
+											return;
+										}
+										
+										// Otherwise
+										else {
+										
+											// Add Bluetooth service to list
+											self.bluetoothServices[response["Data"][i]] = new BluetoothService(self.getCurrentRequestId, self.deviceId, response["Data"][i]);
+											
+											// Append Bluetooth service to list
+											services.push(self.bluetoothServices[response["Data"][i]]);
+										}
+									}
+									
+									// Resolve services
+									resolve(services);
+								}
+								
+								// Otherwise check if response has an error
+								else if("Error" in response === true) {
+								
+									// Check error
+									switch(response["Error"]) {
+									
+										// Connection error
+										case "Connection error":
+										
+											// Reject error
+											reject(new DOMException("", "NetworkError"));
+											
+											// Break
+											break;
+											
+										// Default
+										default:
+										
+											// Reject
+											reject();
+											
+											// break
+											break;
+									}
+								}
+								
+								// Otherwise
+								else {
+								
+									// Reject
+									reject();
+								}
+							}
+						};
+						
+						// Window message event
+						window.addEventListener("message", onMessageEvent);
+						
+						// Get Bluetooth device services using mobile app
+						MobileApp.getBluetoothDeviceServices(currentRequestId.toFixed(), self.deviceId);
+					});
+				}
+		}
+		
+		// Bluetooth device class
+		class BluetoothDevice extends EventTarget {
+		
+			// Public
+			
+				// Constructor
+				constructor(getCurrentRequestId, id, connected) {
+				
+					// Delegate constructor
+					super();
+					
+					// Set GATT
+					this.gatt = new BluetoothGatt(getCurrentRequestId, id, connected, this);
+				}
+		}
+		
+		// Web Bluetooth class
+		class WebBluetooth {
+		
+			// Public
+			
+				// Constructor
+				constructor() {
+				
+					// Initialize Bluetooth devices
+					this.bluetoothDevices = {};
+					
+					// Set get current request ID
+					var requestId = 0;
+					this.getCurrentRequestId = function() {
+					
+						// Get current request ID
+						var currentRequestId = requestId++;
+						
+						// Check if current request ID is at the max safe integer
+						if(currentRequestId === Number.MAX_SAFE_INTEGER) {
+						
+							// Reset request ID
+							requestId = 0;
+						}
+						
+						// Return current request ID
+						return currentRequestId;
+					};
+					
+					// Set self
+					var self = this;
+					
+					// Window message event
+					window.addEventListener("message", function(event) {
+					
+						// Try
+						try {
+						
+							// Parse message as JSON
+							event = JSON.parse(event["data"]);
+						}
+						
+						// Catch errors
+						catch(error) {
+						
+							// Return
+							return;
+						}
+						
+						// Check if message could be a Bluetooth event
+						if(typeof event === "object" && event !== null && "Event" in event === true && typeof event["Event"] === "string" && "Data" in event === true) {
+						
+							// Check event
+							switch(event["Event"]) {
+							
+								// Bluetooth device disconnected event
+								case "Bluetooth Device Disconnected":
+								
+									// Check if data is valid
+									if(typeof event["Data"] === "string") {
+									
+										// Check if Bluetooth device exists in the list
+										if(event["Data"] in self.bluetoothDevices === true) {
+										
+											// Set that Bluetooth device isn't connected
+											self.bluetoothDevices[event["Data"]].gatt.connected = false;
+											
+											// Trigger GATT server disconnected event on the Bluetooth device
+											self.bluetoothDevices[event["Data"]].dispatchEvent(new Event("gattserverdisconnected"));
+											
+											// Remove Bluetooth device from list
+											delete self.bluetoothDevices[event["Data"]];
+										}
+									}
+									
+									// Break
+									break;
+								
+								// Bluetooth device characterstic changed
+								case "Bluetooth Device Characteristic Changed":
+								
+									// Check if data is valid
+									if(typeof event["Data"] === "object" && event["Data"] !== null && "ID" in event["Data"] === true && typeof event["Data"]["ID"] === "string" && "Service" in event["Data"] === true && typeof event["Data"]["Service"] === "string" && "Characteristic" in event["Data"] === true && typeof event["Data"]["Characteristic"] === "string" && "Value" in event["Data"] === true && typeof event["Data"]["Value"] === "string" && /^(?:[0-9A-F]{2})+$/iu.test(event["Data"]["Value"]) === true) {
+									
+										// Check if Bluetooth device exists in the list and is connected
+										if(event["Data"]["ID"] in self.bluetoothDevices === true && self.bluetoothDevices[event["Data"]["ID"]].gatt.connected === true) {
+										
+											// Check if Bluetooth device has the Bluetooth service
+											if(event["Data"]["Service"] in self.bluetoothDevices[event["Data"]["ID"]].gatt.bluetoothServices === true) {
+											
+												// Check if Bluetooth service has the Bluetooth characteristic
+												if(event["Data"]["Characteristic"] in self.bluetoothDevices[event["Data"]["ID"]].gatt.bluetoothServices[event["Data"]["Service"]].bluetoothCharacteristics === true) {
+												
+													// Set Bluetooth characteristic's value
+													self.bluetoothDevices[event["Data"]["ID"]].gatt.bluetoothServices[event["Data"]["Service"]].bluetoothCharacteristics[event["Data"]["Characteristic"]].value.buffer = new Uint8Array(event["Data"]["Value"].match(/[0-9A-F]{2}/iug).map(function(hexCharacters) {
+												
+														// Return hex characters as a byte
+														return parseInt(hexCharacters, 16);
+													}));
+													
+													// Trigger characteristic value changed event on the Bluetooth characteristic
+													self.bluetoothDevices[event["Data"]["ID"]].gatt.bluetoothServices[event["Data"]["Service"]].bluetoothCharacteristics[event["Data"]["Characteristic"]].dispatchEvent(new Event("characteristicvaluechanged"));
+												}
+											}
+										}
+									}
+									
+									// Break
+									break;
+							}
+						}
+					});
+				}
+				
+				// Request device
+				requestDevice(filters) {
+				
+					// Set self
+					var self = this;
+					
+					// Return promise
+					return new Promise(function(resolve, reject) {
+					
+						// Get current request ID
+						var currentRequestId = self.getCurrentRequestId();
+						
+						// On message event
+						var onMessageEvent = function(event) {
+						
+							// Try
+							try {
+							
+								// Parse message as JSON
+								var response = JSON.parse(event["data"]);
+							}
+							
+							// Catch errors
+							catch(error) {
+							
+								// Return
+								return;
+							}
+							
+							// Check if message is a response for this request
+							if(typeof response === "object" && response !== null && "Bluetooth Request ID" in response === true && response["Bluetooth Request ID"] === currentRequestId.toFixed()) {
+							
+								// Remove this window message event
+								window.removeEventListener("message", onMessageEvent);
+								
+								// Check if response's data is valid
+								if("Data" in response === true && typeof response["Data"] === "object" && response["Data"] !== null && "ID" in response["Data"] === true && typeof response["Data"]["ID"] === "string" && "Connected" in response["Data"] === true && typeof response["Data"]["Connected"] === "boolean") {
+								
+									// Check if Bluetooth device in the response doesn't exist in the list
+									if(response["Data"]["ID"] in self.bluetoothDevices === false) {
+									
+										// Add Bluetooth device to list
+										self.bluetoothDevices[response["Data"]["ID"]] = new BluetoothDevice(self.getCurrentRequestId, response["Data"]["ID"], response["Data"]["Connected"]);
+									}
+									
+									// Resolve Bluetooth device
+									resolve(self.bluetoothDevices[response["Data"]["ID"]]);
+								}
+								
+								// Otherwise check if response has an error
+								else if("Error" in response === true) {
+								
+									// Check error
+									switch(response["Error"]) {
+									
+										// No device found
+										case "No device found":
+										
+											// Reject error
+											reject(new DOMException("", "NoChoiceError"));
+											
+											// Break
+											break;
+											
+										// No device selected
+										case "No device selected":
+										
+											// Reject error
+											reject(new DOMException("", "NotFoundError"));
+											
+											// Break
+											break;
+											
+										// Bluetooth is off
+										case "Bluetooth is off":
+										
+											// Reject error
+											reject(new DOMException("", "DeviceStateError"));
+											
+											// Break
+											break;
+											
+										// Default
+										default:
+										
+											// Reject
+											reject();
+											
+											// break
+											break;
+									}
+								}
+								
+								// Otherwise
+								else {
+								
+									// Reject
+									reject();
+								}
+							}
+						};
+						
+						// Window message event
+						window.addEventListener("message", onMessageEvent);
+						
+						// Request Bluetooth device using mobile app
+						MobileApp.requestBluetoothDevice(currentRequestId.toFixed());
+					});
+				}
+		}
+		
+		// Use mobile app's Web Bluetooth implementation
+		navigator["bluetooth"] = new WebBluetooth();
 	}
 }
