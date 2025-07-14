@@ -3275,11 +3275,12 @@ public final class MainActivity extends Activity {
 				// Check if current notification exists
 				if(currentNotification != null) {
 				
-					// Check if permission is granted
-					if(grantResults != null && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+					// Check if notifications are enabled and API level is at least Tiramisu and permission is granted or API level is less than Tiramisu
+					final NotificationManager notificationManager = ((NotificationManager)getSystemService(NOTIFICATION_SERVICE));
+					if(notificationManager.areNotificationsEnabled() && ((Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && grantResults != null && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU)) {
 					
 						// Show current notification
-						((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).notify(notificationIndex++, currentNotification);
+						notificationManager.notify(notificationIndex++, currentNotification);
 					
 						// Check if notification index overflowed
 						if(notificationIndex < 0) {

@@ -95,7 +95,6 @@ PATH="$JBR_BIN":$PATH "$BUILD_TOOLS/apksigner" sign --ks "./keystore.jks" --ks-p
 
 # Cleanup
 rm -rf "./build" "./master.zip" "./mwcwallet.com-master"
-sed -i "s/android:versionName=\".*\"/android:versionName=\"\"/" "./AndroidManifest.xml"
 
 # Check if adb is provided
 if [[ -v ADB ]]; then
