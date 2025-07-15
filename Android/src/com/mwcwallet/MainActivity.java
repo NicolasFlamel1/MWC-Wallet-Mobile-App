@@ -2900,12 +2900,36 @@ public final class MainActivity extends Activity {
 				// Check if view exists
 				if(view != null) {
 				
-					// Check if an anchor tag was clicked
+					// Check if getting clicked element was successful
 					final WebView.HitTestResult hitTestResult = view.getHitTestResult();
-					if(hitTestResult != null && hitTestResult.getType() == WebView.HitTestResult.SRC_ANCHOR_TYPE) {
+					if(hitTestResult != null) {
 					
-						// Open request using a web browser
-						startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(hitTestResult.getExtra())).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+						// Check if clicked element's href exists
+						final String href = hitTestResult.getExtra();
+						if(href != null) {
+					
+							// Check clicked element's type
+							switch(hitTestResult.getType()) {
+							
+								// Link type
+								case WebView.HitTestResult.SRC_ANCHOR_TYPE:
+								
+									// Open request using a web browser
+									startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(href)).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+									
+									// Break
+									break;
+									
+								// Email type
+								case WebView.HitTestResult.EMAIL_TYPE:
+								
+									// Open request using an email client
+									startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("mailto:" + href)).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+									
+									// Break
+									break;
+							}
+						}
 					}
 				}
 				
