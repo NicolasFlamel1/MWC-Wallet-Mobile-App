@@ -169,9 +169,39 @@ public final class MainActivity extends Activity {
 		final NotificationChannel notificationChannel = new NotificationChannel(getPackageName(), getString(R.string.ApplicationLabel), NotificationManager.IMPORTANCE_MAX);
 		notificationChannel.setShowBadge(false);
 		
-		// Register notification channel
+		// Create or update notification channel
 		notificationIndex = 0;
-		((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(notificationChannel);
+		final NotificationManager notificationManager = (NotificationManager)getSystemService(NOTIFICATION_SERVICE);
+		notificationManager.createNotificationChannel(notificationChannel);
+		
+		// Register receiver for locale changed action
+		registerReceiver(new BroadcastReceiver() {
+		
+			// On receive
+			@Override public final void onReceive(final Context context, final Intent intent) {
+			
+				// Check if intent and its action exist
+				if(intent != null && intent.getAction() != null) {
+				
+					// Check action
+					switch(intent.getAction()) {
+					
+						// Locale changed action
+						case Intent.ACTION_LOCALE_CHANGED:
+						
+							// Update notification channel's name
+							notificationChannel.setName(getString(R.string.ApplicationLabel));
+							
+							// Update notification channel
+							notificationManager.createNotificationChannel(notificationChannel);
+							
+							// Break
+							break;
+					}
+				}
+			}
+			
+		}, new IntentFilter(Intent.ACTION_LOCALE_CHANGED), RECEIVER_NOT_EXPORTED);
 		
 		// Create web view
 		webView = new WebView(this);
@@ -3300,7 +3330,7 @@ public final class MainActivity extends Activity {
 				if(currentNotification != null) {
 				
 					// Check if notifications are enabled and API level is at least Tiramisu and permission is granted or API level is less than Tiramisu
-					final NotificationManager notificationManager = ((NotificationManager)getSystemService(NOTIFICATION_SERVICE));
+					final NotificationManager notificationManager = (NotificationManager)getSystemService(NOTIFICATION_SERVICE);
 					if(notificationManager.areNotificationsEnabled() && ((Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && grantResults != null && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU)) {
 					
 						// Show current notification
