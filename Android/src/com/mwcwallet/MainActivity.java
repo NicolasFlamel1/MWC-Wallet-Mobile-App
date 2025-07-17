@@ -40,6 +40,7 @@ import android.hardware.usb.UsbEndpoint;
 import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
 import android.graphics.Color;
+import android.graphics.Insets;
 import android.Manifest;
 import android.net.Uri;
 import android.os.Build;
@@ -51,7 +52,9 @@ import android.util.Pair;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup.MarginLayoutParams;
 import android.view.ViewTreeObserver;
+import android.view.WindowInsets;
 import android.webkit.ConsoleMessage;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
@@ -334,6 +337,33 @@ public final class MainActivity extends Activity {
 		webView.setWebContentsDebuggingEnabled((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0);
 		webView.clearCache(true);
 		webView.setBackgroundColor(Color.TRANSPARENT);
+		
+		// Check if API level is at least Vanilla Ice Cream
+		if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+		
+			// Web view on apply window insets
+			webView.setOnApplyWindowInsetsListener((final View view, final WindowInsets insets) -> {
+			
+				// Check if getting system bar insets was successful
+				final Insets systemBarInsets = insets.getInsets(WindowInsets.Type.systemBars());
+				if(systemBarInsets != null) {
+				
+					// Check if getting view's layout parameters was successful
+					final MarginLayoutParams layoutParameters = (MarginLayoutParams)view.getLayoutParams();
+					if(layoutParameters != null) {
+					
+						// Set layout parameter's to use system bar insets as margins
+						layoutParameters.setMargins(systemBarInsets.left, systemBarInsets.top, systemBarInsets.right, systemBarInsets.bottom);
+						
+						// Set view's layout parameters
+						view.setLayoutParams(layoutParameters);
+					}
+				}
+				
+				// Return consumed
+				return WindowInsets.CONSUMED;
+			});
+		}
 		
 		// Add mobile app JavaScript interface
 		final MainActivity self = this;
