@@ -504,13 +504,13 @@ public final class MainActivity extends Activity {
 									}
 									
 									// Catch errors
-									catch(final Exception exception) {
+									catch(final Throwable error) {
 									
 									}
 								}
 								
 								// Catch errors
-								catch(final Exception exception) {
+								catch(final Throwable error) {
 								
 									// Try
 									try {
@@ -520,7 +520,7 @@ public final class MainActivity extends Activity {
 									}
 									
 									// Catch errors
-									catch(final Exception otherException) {
+									catch(final Throwable otherError) {
 									
 									}
 								}
@@ -528,7 +528,7 @@ public final class MainActivity extends Activity {
 						}
 						
 						// Catch errors
-						catch(final Exception exception) {
+						catch(final Throwable error) {
 						
 						}
 						
@@ -607,7 +607,7 @@ public final class MainActivity extends Activity {
 								}
 								
 								// Catch errors
-								catch(final Exception exception) {
+								catch(final Throwable error) {
 								
 									// Send USB devices response message to web view
 									webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
@@ -911,7 +911,7 @@ public final class MainActivity extends Activity {
 										}
 										
 										// Catch errors
-										catch(final Exception exception) {
+										catch(final Throwable error) {
 										
 											// Send select USB device configuration response message to web view
 											webView.postWebMessage(new WebMessage("{\"USB Request ID\": " + JSONObject.quote(requestId) + ", \"Error\": \"Error occurred\"}"), Uri.parse(ASSET_URI_SCHEME + "://" + ASSET_URI_AUTHORITY));
@@ -1594,7 +1594,7 @@ public final class MainActivity extends Activity {
 																		}
 																		
 																		// Catch errors
-																		catch(final Exception exception) {
+																		catch(final Throwable error) {
 																		
 																			// Check if Bluetooth device is open
 																			if(openedBluetoothDevices.containsKey(deviceId)) {
@@ -2649,7 +2649,7 @@ public final class MainActivity extends Activity {
 							}
 							
 							// Catch errors
-							catch(final Exception exception) {
+							catch(final Throwable error) {
 							
 								// Return not found response
 								return new WebResourceResponse(null, null, 404, "Not Found", null, null);
@@ -2807,7 +2807,7 @@ public final class MainActivity extends Activity {
 								}
 								
 								// Catch errors
-								catch(final Exception exception) {
+								catch(final Throwable error) {
 								
 									// Return nothing
 									return null;
@@ -3230,7 +3230,7 @@ public final class MainActivity extends Activity {
 						}
 						
 						// Catch errors
-						catch(final Exception exception) {
+						catch(final Throwable error) {
 						
 							// Move to background
 							moveTaskToBack(true);
@@ -3679,7 +3679,7 @@ public final class MainActivity extends Activity {
 			}
 			
 			// Catch errors
-			catch(final Exception exception) {
+			catch(final Throwable error) {
 			
 			}
 		}
