@@ -39,6 +39,7 @@ import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbEndpoint;
 import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
+import android.graphics.Color;
 import android.Manifest;
 import android.net.Uri;
 import android.os.Build;
@@ -332,6 +333,7 @@ public final class MainActivity extends Activity {
 		webSettings.setMediaPlaybackRequiresUserGesture(false);
 		webView.setWebContentsDebuggingEnabled((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0);
 		webView.clearCache(true);
+		webView.setBackgroundColor(Color.TRANSPARENT);
 		
 		// Add mobile app JavaScript interface
 		final MainActivity self = this;
