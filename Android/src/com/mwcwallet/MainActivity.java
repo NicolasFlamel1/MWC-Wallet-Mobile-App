@@ -40,6 +40,7 @@ import android.hardware.usb.UsbEndpoint;
 import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
 import android.graphics.Color;
+import android.graphics.drawable.Icon;
 import android.graphics.Insets;
 import android.Manifest;
 import android.net.Uri;
@@ -344,19 +345,23 @@ public final class MainActivity extends Activity {
 			// Web view on apply window insets
 			webView.setOnApplyWindowInsetsListener((final View view, final WindowInsets insets) -> {
 			
-				// Check if getting system bar insets was successful
-				final Insets systemBarInsets = insets.getInsets(WindowInsets.Type.systemBars());
-				if(systemBarInsets != null) {
+				// Check if view and insets exist
+				if(view != null && insets != null) {
 				
-					// Check if getting view's layout parameters was successful
-					final MarginLayoutParams layoutParameters = (MarginLayoutParams)view.getLayoutParams();
-					if(layoutParameters != null) {
+					// Check if getting system bar insets was successful
+					final Insets systemBarInsets = insets.getInsets(WindowInsets.Type.systemBars());
+					if(systemBarInsets != null) {
 					
-						// Set layout parameter's to use system bar insets as margins
-						layoutParameters.setMargins(systemBarInsets.left, systemBarInsets.top, systemBarInsets.right, systemBarInsets.bottom);
+						// Check if getting view's layout parameters was successful
+						final MarginLayoutParams layoutParameters = (MarginLayoutParams)view.getLayoutParams();
+						if(layoutParameters != null) {
 						
-						// Set view's layout parameters
-						view.setLayoutParams(layoutParameters);
+							// Set layout parameter's to use system bar insets as margins
+							layoutParameters.setMargins(systemBarInsets.left, systemBarInsets.top, systemBarInsets.right, systemBarInsets.bottom);
+							
+							// Set view's layout parameters
+							view.setLayoutParams(layoutParameters);
+						}
 					}
 				}
 				
@@ -514,7 +519,7 @@ public final class MainActivity extends Activity {
 												}
 												
 												// Set current notification to show that saving the file was successful
-												currentNotification = new Notification.Builder(self, getPackageName()).setSmallIcon(R.drawable.logo).setContentTitle(getString(R.string.FileSavedSuccessLabel)).setContentText(String.format(getString(R.string.FileSavedSuccessDescription), actualFileName)).setContentIntent(PendingIntent.getActivity(self, 0, new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE)).setAutoCancel(true).build();
+												currentNotification = new Notification.Builder(self, getPackageName()).setSmallIcon(R.drawable.logo).setContentTitle(getString(R.string.FileSavedSuccessLabel)).setContentText(String.format(getString(R.string.FileSavedSuccessDescription), actualFileName)).setContentIntent(PendingIntent.getActivity(self, 0, Intent.createChooser(new Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, uri).setType("application/octet-stream").setFlags(Intent.FLAG_ACTIVITY_NEW_TASK), getString(R.string.FileSenderLabel)), PendingIntent.FLAG_IMMUTABLE)).setAutoCancel(true).addAction(new Notification.Action.Builder(Icon.createWithResource(self, R.drawable.logo), getString(R.string.OpenDownloadsLabel), PendingIntent.getActivity(self, 0, new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE)).setAllowGeneratedReplies(false).build()).setAllowSystemGeneratedContextualActions(false).build();
 												
 												// Set current notification is for success to true
 												currentNotificationIsForSuccess = true;
@@ -565,7 +570,7 @@ public final class MainActivity extends Activity {
 						}
 						
 						// Set current notification to show that saving the file failed
-						currentNotification = new Notification.Builder(self, getPackageName()).setSmallIcon(R.drawable.logo).setContentTitle(getString(R.string.FileSavedFailLabel)).setContentText(getString(R.string.FileSavedFailDescription)).build();
+						currentNotification = new Notification.Builder(self, getPackageName()).setSmallIcon(R.drawable.logo).setContentTitle(getString(R.string.FileSavedFailLabel)).setContentText(getString(R.string.FileSavedFailDescription)).setAllowSystemGeneratedContextualActions(false).build();
 						
 						// Set current notification is for success to false
 						currentNotificationIsForSuccess = false;
@@ -3388,6 +3393,31 @@ public final class MainActivity extends Activity {
 						// Check if current notification is for success
 						if(currentNotificationIsForSuccess) {
 						
+							// Check if getting current notification's content intent was successful
+							final PendingIntent contentIntent = currentNotification.contentIntent;
+							if(contentIntent != null) {
+							
+								// Set alert dialog's negative button
+								alertDialog.setNegativeButton(R.string.FileSenderLabel, new DialogInterface.OnClickListener() {
+								
+									// On click
+									@Override public final void onClick(final DialogInterface dialog, final int which) {
+									
+										// Try
+										try {
+										
+											// Share file
+											contentIntent.send();
+										}
+										
+										// Catch errors
+										catch(final Throwable error) {
+										
+										}
+									}
+								});
+							}
+							
 							// Set alert dialog's positive button
 							alertDialog.setPositiveButton(R.string.OpenDownloadsLabel, new DialogInterface.OnClickListener() {
 							
@@ -3397,7 +3427,6 @@ public final class MainActivity extends Activity {
 									// Open downloads
 									startActivity(new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
 								}
-								
 							});
 						}
 						

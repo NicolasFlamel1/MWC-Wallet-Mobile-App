@@ -7,7 +7,8 @@
 ?><?xml version="1.0" encoding="utf-8"?>
 <resources>
 	<string name="ApplicationLabel"><?= escapeString(getTranslation('MWC Wallet')); ?></string>
-	<string name="FileChooserLabel"><?= escapeString(getTranslation('File Chooser')); ?></string>
+	<string name="FileChooserLabel"><?= escapeString(getTranslation('Open file')); ?></string>
+	<string name="FileSenderLabel"><?= escapeString(getTranslation('Share file')); ?></string>
 	<string name="FileSavedSuccessLabel"><?= escapeString(getTranslation('File saved')); ?></string>
 	<string name="FileSavedSuccessDescription"><?= escapeString(getTranslation('%%1$s was saved to your downloads.')); ?></string>
 	<string name="FileSavedFailLabel"><?= escapeString(getTranslation('File not saved')); ?></string>
