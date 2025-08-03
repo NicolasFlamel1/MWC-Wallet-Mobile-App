@@ -2703,6 +2703,7 @@ public final class MainActivity extends Activity {
 								put("Access-Control-Allow-Origin", "*");
 								put("Access-Control-Allow-Methods", "*");
 								put("Access-Control-Allow-Headers", "*");
+								put("Access-Control-Allow-Private-Network", "true");
 								put("Connection", "close");
 								
 							}}, null);
@@ -2804,7 +2805,7 @@ public final class MainActivity extends Activity {
 											// Check if header isn't a CORS or connection header and its values exists
 											final String key = header.getKey();
 											final List<String> values = header.getValue();
-											if(key != null && !key.equalsIgnoreCase("Access-Control-Allow-Origin") && !key.equalsIgnoreCase("Access-Control-Allow-Methods") && !key.equalsIgnoreCase("Access-Control-Allow-Headers") && !key.equalsIgnoreCase("Connection") && values != null) {
+											if(key != null && !key.equalsIgnoreCase("Access-Control-Allow-Origin") && !key.equalsIgnoreCase("Access-Control-Allow-Methods") && !key.equalsIgnoreCase("Access-Control-Allow-Headers") && !key.equalsIgnoreCase("Access-Control-Allow-Private-Network") && !key.equalsIgnoreCase("Access-Control-Allow-Credentials") && !key.equalsIgnoreCase("Access-Control-Expose-Headers") && !key.equalsIgnoreCase("Access-Control-Max-Age") && !key.equalsIgnoreCase("Connection") && values != null) {
 											
 												// Set values exist to true
 												boolean valuesExist = true;
@@ -2835,8 +2836,6 @@ public final class MainActivity extends Activity {
 									
 									// Append allowed CORS and connection headers to list
 									headers.put("Access-Control-Allow-Origin", "*");
-									headers.put("Access-Control-Allow-Methods", "*");
-									headers.put("Access-Control-Allow-Headers", "*");
 									headers.put("Connection", "close");
 									
 									// Return response with new headers
