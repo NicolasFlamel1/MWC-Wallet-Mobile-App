@@ -11,7 +11,7 @@
 	<uses-feature android:name="android.hardware.usb.host" android:required="false"/>
 	<uses-feature android:name="android.hardware.bluetooth_le" android:required="false"/>
 	<application android:debuggable="false" android:label="@string/ApplicationLabel" android:icon="@mipmap/app_icon" android:theme="@style/ApplicationTheme" android:usesCleartextTraffic="true">
-		<activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:configChanges="colorMode|density|fontScale|fontWeightAdjustment|grammaticalGender|keyboard|keyboardHidden|layoutDirection|locale|mcc|mnc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode">
+		<activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize|stateAlwaysVisible" android:configChanges="colorMode|density|fontScale|fontWeightAdjustment|grammaticalGender|keyboard|keyboardHidden|layoutDirection|locale|mcc|mnc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode">
 			<intent-filter>
 				<action android:name="android.intent.action.MAIN"/>
 				<category android:name="android.intent.category.LAUNCHER"/>
