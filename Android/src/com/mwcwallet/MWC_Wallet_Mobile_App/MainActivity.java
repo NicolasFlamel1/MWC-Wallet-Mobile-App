@@ -1,5 +1,5 @@
 // Package
-package com.mwcwallet;
+package com.mwcwallet.MWC_Wallet_Mobile_App;
 
 
 // Imports
@@ -3912,7 +3912,7 @@ public final class MainActivity extends Activity {
 	}
 	
 	// Action USB device permission
-	static private final String ACTION_USB_DEVICE_PERMISSION = "com.mwcwallet.USB_DEVICE_PERMISSION";
+	static private final String ACTION_USB_DEVICE_PERMISSION = "com.mwcwallet.MWC_Wallet_Mobile_App.USB_DEVICE_PERMISSION";
 	
 	// Asset URI scheme
 	static private final String ASSET_URI_SCHEME = "https";

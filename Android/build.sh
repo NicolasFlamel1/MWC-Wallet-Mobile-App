@@ -75,7 +75,7 @@ sed -i "s/android:versionCode=\".*\" android:versionName=\".*\"/android:versionC
 
 # Build app
 "$BUILD_TOOLS/aapt" package -m -J "./build/gen" -M "./AndroidManifest.xml" -I "$ANDROID_JAR" -S "./build/res"
-"$JBR_BIN/javac" -classpath "$ANDROID_JAR" -d "./build/obj" $(find "./build/gen/" -name "*.java") "./src/com/mwcwallet/MainActivity.java"
+"$JBR_BIN/javac" -classpath "$ANDROID_JAR" -d "./build/obj" $(find "./build/gen/" -name "*.java") "./src/com/mwcwallet/MWC_Wallet_Mobile_App/MainActivity.java"
 PATH="$JBR_BIN":$PATH "$BUILD_TOOLS/d8" --min-api $(grep -Po "(?<=minSdkVersion=\").*?(?=\")" "./AndroidManifest.xml") --release --lib "$ANDROID_JAR" --output "./build/apk" $(find "./build/obj/" -name "*.class")
 "$BUILD_TOOLS/aapt" package -M "./AndroidManifest.xml" -I "$ANDROID_JAR" -S "./build/res" -A "./build/assets" -F "./build/MWC Wallet_unsigned.apk" "./build/apk"
 
@@ -101,7 +101,7 @@ if [[ -v ADB ]]; then
 
 	# Install and run app
 	"$ADB" install "../MWC Wallet Android App v$VERSION.apk"
-	"$ADB" shell am start -n "com.mwcwallet/.MainActivity"
+	"$ADB" shell am start -n "com.mwcwallet.MWC_Wallet_Mobile_App/.MainActivity"
 	"$ADB" logcat -c
-	"$ADB" logcat -s "com.mwcwallet"
+	"$ADB" logcat -s "com.mwcwallet.MWC_Wallet_Mobile_App"
 fi
